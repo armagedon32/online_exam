@@ -229,7 +229,7 @@
       const selectAllCb = document.getElementById('selectAllCb');
 
       function visibleBoxes() {
-        return [...document.querySelectorAll('#questions-list input[type="checkbox"]:visible')];
+        return [...boxes].filter(cb => cb.closest('.q-item').style.display !== 'none');
       }
       function refreshSelectAll() {
         if (!selectAllCb) return;
