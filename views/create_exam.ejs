@@ -159,12 +159,14 @@
 
           <div id="questions-list" class="questions-list">
             <% if (typeof questions !== 'undefined' && questions.length) { %>
-              <% questions.forEach((q, idx) => { %>
+              <% let subjIdx = {}; %>
+              <% questions.forEach((q) => { %>
+                <% subjIdx[q.subject] = (subjIdx[q.subject] || 0) + 1; %>
                 <label class="checkbox-item q-item" data-subject="<%= q.subject %>">
                   <input type="checkbox" name="questionIds" value="<%= q.id %>">
                   <div style="flex: 1; min-width: 0;">
                     <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2);">
-                      <span class="badge badge-neutral" style="font-size: var(--text-xs);">Q<%= idx + 1 %></span>
+                      <span class="badge badge-neutral" style="font-size: var(--text-xs);">Q<%= subjIdx[q.subject] %></span>
                       <span class="badge badge-primary"><%= q.subject %></span>
                       <span class="badge badge-success">Correct: <%= q.correct_answer %></span>
                     </div>
