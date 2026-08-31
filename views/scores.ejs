@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scores - Online Exam System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <div class="sidebar-profile">
+        <div class="avatar"><%= (user && (user.full_name || user.username) ? (user.full_name || user.username).charAt(0).toUpperCase() : 'A') %></div>
+        <div class="profile-meta">
+          <span class="profile-name"><%= user ? (user.full_name || user.username) : 'Admin' %></span>
+          <span class="profile-role">Administrator</span>
+        </div>
+      </div>
+    <nav>
+      <a href="/admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg> Dashboard</a>
+      <a href="/admin/questions/add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg> Questions</a>
+      <a href="/admin/exams/create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"></polyline></svg> Create Exam</a>
+      <a href="/admin/scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg> Scores</a>
+      <a href="/admin/users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Users</a>
+      <a href="/admin/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 15a1.65 1.65 0 0 0 1 1.51V17a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1-1.51z"></path></svg> Settings</a>
+      <a href="/logout" class="logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg> Logout</a>
+    </nav>
+  </div>
+  <div class="main-content">
+    <h2 style="margin:0 0 1rem 0;">Scores — Taken Exams</h2>
+    <form method="get" action="/admin/scores" style="display:flex; gap:0.5rem; margin-bottom:1rem; align-items:center;">
+      <input type="text" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>" placeholder="Search kahit ano — name, username, course, year, SET, exam, subject, semester, period, score..." style="flex:1; padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; font-family:Inter, sans-serif; background:white;">
+      <button type="submit" style="padding:0.65rem 1rem; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Search</button>
+      <% if (typeof search !== 'undefined' && search) { %><a href="/admin/scores" style="padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--muted); background:white; font-size:0.85rem;">Clear</a><% } %>
+    </form>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">All Scores (<%= typeof total !== 'undefined' ? total : scores.length %>)</h3>
+        <span style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+          <a href="/admin/scores/report" class="btn btn-primary" style="padding:0.5rem 0.9rem; font-size:0.85rem; display:inline-flex; gap:0.4rem; align-items:center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:14px;height:14px;"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Print Report
+          </a>
+          <span style="font-size:0.8rem; color:var(--muted);">Page <%= typeof page !== 'undefined' ? page : 1 %> / <%= typeof totalPages !== 'undefined' ? totalPages : 1 %> • 10 per page • Delete → Retake</span>
+        </span>
+      </div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>#</th><th>Student</th><th>Course / Year / SET</th><th>Exam</th><th>Subject</th><th>Score</th><th>Completed At</th><th style="text-align:right;">Action</th></tr></thead>
+        <tbody>
+          <% if (scores.length === 0) { %>
+            <tr><td colspan="8" style="text-align:center; color:var(--muted); padding:1.5rem;">No scores yet. Create an exam and have students take it.</td></tr>
+          <% } %>
+          <% scores.forEach(s => { %>
+            <tr>
+              <td><%= s.score_id %></td>
+              <td><strong><%= s.full_name || s.username %></strong><br><span style="color:var(--muted); font-size:0.75rem;"><%= s.username %></span></td>
+              <td><span style="font-size:0.8rem;"><%= s.course || '—' %> • <%= s.year_level || '—' %></span><br><span class="badge badge-set"><%= s.set_group || '—' %></span></td>
+              <td><strong><%= s.exam_title %></strong><br><span style="color:var(--muted); font-size:0.75rem;"><%= s.semester || '' %> <%= s.period || '' %></span></td>
+              <td><span class="badge badge-subj"><%= s.subject %></span></td>
+              <td><span style="font-weight:800; color:var(--success); font-size:1.1rem;"><%= s.score %></span></td>
+              <td style="color:var(--muted); font-size:0.75rem;"><%= new Date(s.completed_at).toLocaleString() %></td>
+              <td style="text-align:right;">
+                <form action="/admin/scores/delete" method="post" style="display:inline;" data-message="Delete record for <%= s.username %> — <%= s.exam_title %>?<br><small>Student can retake that exam after deleting.</small>" data-confirm-text="Delete" data-danger="true">
+                  <input type="hidden" name="id" value="<%= s.score_id %>">
+                  <button class="btn-delete">Delete → Retake</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:0.9rem 1.25rem; border-top:1px solid var(--border); flex-wrap:wrap; gap:0.5rem;">
+        <span style="font-size:0.8rem; color:var(--muted);">Page <%= page %> of <%= totalPages %> • <%= total %> records • 10 per page</span>
+        <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
+          <% if (page > 1) { %><a href="/admin/scores?page=<%= page-1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;">‹ Prev</a><% } %>
+          <% for(let p=1; p<=totalPages; p++){ %>
+            <% if(p===page){ %><span style="padding:0.4rem 0.7rem; background:var(--primary); color:white; border-radius:6px; font-weight:700; font-size:0.8rem;"><%= p %></span>
+            <% } else if(p<=2 || p>totalPages-1 || Math.abs(p-page)<=1){ %><a href="/admin/scores?page=<%= p %><%= search ? '&search='+encodeURIComponent(search) : '' %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;"><%= p %></a>
+            <% } else if((p===3 && page>4) || (p===totalPages-2 && page < totalPages-3)){ %><span style="padding:0.4rem; color:var(--muted);">…</span><% } %>
+          <% } %>
+          <% if (page < totalPages) { %><a href="/admin/scores?page=<%= page+1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;">Next ›</a><% } %>
+        </div>
+      </div>
+    </div>
+    <% if (scores.length === 0) { %>
+      <p style="text-align:center; color:var(--muted); padding:2rem;">No scores yet. Create an exam and have students take it.</p>
+    <% } %>
+    </div>
+    <p style="color:var(--muted); font-size:0.85rem; margin-top:0.8rem;">Tip: Deleting a record allows that student to retake that specific exam. Deleting the <b>User</b> in <a href="/admin/users" style="color:var(--primary);">Users</a> also deletes all their scores.</p>
+  </div>
+  
+  <script src="/ui.js"></script>
+  <script>
+    uiShowUrlAlerts();
+    uiConfirmForms();
+  </script>
+
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+</body>
+</html>

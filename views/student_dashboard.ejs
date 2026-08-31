@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard — Online Exam System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+    <div class="nav-left">
+      <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <path d="M12 11h.01"></path>
+          <path d="M14 8h.01"></path>
+        </svg>
+      </div>
+      <span class="brand">Online Exam</span>
+      <a href="/student" class="nav-link active" aria-current="page">Dashboard</a>
+      <a href="/student#exams" class="nav-link">My Exams</a>
+      <a href="/change-password" class="nav-link">Change Password</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar"><%= (user.full_name || user.username || '?').charAt(0).toUpperCase() %></div>
+      <span><%= user.full_name || user.username %> · <%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %></span>
+      <a href="/logout" class="nav-logout" data-ui-confirm="Log out of your account?" data-confirm-text="Logout" data-danger="true">Logout</a>
+    </div>
+  </nav>
+
+  <div class="dashboard-container" style="max-width: var(--content-max); margin: var(--space-8) auto; padding: 0 var(--space-6);">
+    <header class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+      <div>
+        <h1>Welcome, <%= user.full_name || user.username %> 👋</h1>
+        <p><%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %> · <%= user.username %></p>
+      </div>
+      <div class="date-badge" style="font-size: var(--text-sm); color: var(--text-muted); background: var(--bg-secondary); border: 1px solid var(--border-light); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md);">
+        <%= new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %>
+      </div>
+    </header>
+
+    <div class="card" style="margin-bottom: var(--space-6);">
+      <div class="card-body" style="display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: center; justify-content: space-between;">
+        <div style="flex: 1; min-width: 280px;">
+          <strong style="font-size: var(--text-base); color: var(--text-primary);">Your Subjects</strong>
+          <div style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap;">
+            <% if (mySubjects && mySubjects.length) { %>
+              <% mySubjects.forEach(s => { %><span class="badge badge-primary"><%= s %></span><% }) %>
+            <% } else { %>
+              <span style="color: var(--text-muted); font-size: var(--text-sm);">No subjects selected — contact admin.</span>
+            <% } %>
+          </div>
+        </div>
+        <div style="text-align: right; min-width: 180px;">
+          <div style="font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: var(--font-semibold); margin-bottom: var(--space-1);">Available Exams</div>
+          <div style="font-size: var(--text-3xl); font-weight: var(--font-extrabold); color: var(--text-primary);"><%= exams.length %></div>
+          <% if (typeof allExams !== 'undefined' && allExams.length !== exams.length) { %>
+            <div style="font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1);">Filtered from <%= allExams.length %> total</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <% if (exams.length === 0) { %>
+      <div class="card">
+        <div class="card-body" style="padding: var(--space-12) var(--space-6);">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <h3>No exams available yet</h3>
+            <p>Your subjects: <strong><%= (mySubjects||[]).join(', ') || 'none' %></strong>. Only exams matching your subjects appear here.</p>
+            <% if (typeof allExams !== 'undefined' && allExams.length > 0) { %>
+              <p style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-muted);">Total exams in system: <%= allExams.length %> — ask admin to create an exam for your subject.</p>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    <% } else { %>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4);">
+        <% exams.forEach(exam => {
+            const isTaken = takenSet && takenSet.has(String(exam.id));
+            const sc = scoreMap && scoreMap[exam.id];
+        %>
+          <% if (isTaken) { %>
+            <article class="card" style="border-style: dashed; opacity: 0.85; background: var(--bg-tertiary);">
+              <div class="card-body">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3);">
+                  <h3 style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); flex: 1; margin: 0;"><%= exam.title %></h3>
+                  <span class="badge badge-success">Completed</span>
+                </div>
+                <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+                  <span class="badge badge-success"><%= exam.subject %></span>
+                  <% if (exam.semester) { %><span class="badge badge-primary"><%= exam.semester %></span><% } %>
+                  <% if (exam.period) { %><span class="badge badge-warning"><%= exam.period %></span><% } %>
+                </p>
+                <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-success); font-weight: var(--font-semibold);">
+                  Your Score: <strong><%= sc ? sc.score : '—' %></strong>
+                  <%= sc && sc.completed_at ? ' · ' + new Date(sc.completed_at).toLocaleDateString() : '' %>
+                </p>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light); font-size: var(--text-xs); color: var(--text-muted);">
+                  <span><%= exam.duration %> min · Cannot retake</span>
+                  <span style="background: var(--color-200); color: var(--color-600); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-weight: var(--font-semibold); font-size: var(--text-xs);">Taken ✓</span>
+                </div>
+              </div>
+            </article>
+          <% } else { %>
+            <a href="/student/exam/<%= exam.id %>" class="card" style="text-decoration: none; color: inherit; display: block; transition: all var(--transition-base);">
+              <div class="card-body">
+                <h3 style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); margin: 0 0 var(--space-3);"><%= exam.title %></h3>
+                <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+                  <span class="badge badge-success"><%= exam.subject %></span>
+                  <% if (exam.semester) { %><span class="badge badge-primary"><%= exam.semester %></span><% } %>
+                  <% if (exam.period) { %><span class="badge badge-warning"><%= exam.period %></span><% } %>
+                </p>
+                <% if (exam.instructor) { %>
+                  <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-muted);">Instructor: <%= exam.instructor %></p>
+                <% } %>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
+                  <span style="font-size: var(--text-sm); color: var(--text-muted);"><%= exam.duration %> min</span>
+                  <span class="btn btn-primary btn-sm" style="padding: var(--space-2) var(--space-4);">Take Exam →</span>
+                </div>
+              </div>
+            </a>
+          <% } %>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script>
+    uiConfirmLinks();
+    uiShowUrlAlerts();
+  </script>
+</body>
+</html>

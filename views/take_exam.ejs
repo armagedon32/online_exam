@@ -1,0 +1,450 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= examTitle %> — Online Exam</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css?v=20260831">
+</head>
+<body>
+  <div class="exam-shell">
+    <!-- Header with Timer & Progress -->
+    <header class="exam-header" role="banner">
+      <div class="exam-header-left">
+        <h1 class="exam-title"><%= examTitle %></h1>
+        <span class="exam-subject"><%= subjectName %></span>
+      </div>
+      <div class="exam-timer" aria-live="polite" aria-atomic="true">
+        <div class="timer-display" id="timerDisplay">--:--</div>
+        <div class="timer-label">Time Remaining</div>
+      </div>
+    </header>
+    <div class="exam-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Exam progress">
+      <div class="exam-progress-fill" id="progressFill" style="width: 0%"></div>
+    </div>
+
+    <!-- Main Exam Area -->
+    <main class="exam-main" role="main">
+      <div class="slides-container" id="slidesContainer">
+        <!-- Slides rendered by JS -->
+      </div>
+
+      <!-- Question Navigation Dots -->
+      <nav class="nav-dots" id="navDots" aria-label="Question navigation" role="navigation">
+        <!-- Dots rendered by JS -->
+      </nav>
+
+      <!-- Slide Navigation Buttons -->
+      <div class="slide-nav" id="slideNav">
+        <button class="nav-btn btn-prev" id="btnPrev" disabled aria-label="Previous question">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          <span>Previous</span>
+        </button>
+        <button class="nav-btn btn-next" id="btnNext" aria-label="Next question">
+          <span>Next</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button class="nav-btn btn-submit" id="btnSubmit" style="display:none;" aria-label="Submit exam">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/></svg>
+          <span>Submit Exam</span>
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Exam Data (injected by server) -->
+  <script id="exam-data" type="application/json">
+  {
+    "examId": <%= examId %>,
+    "duration": <%= duration %>,
+    "questions": <%- JSON.stringify(questions) %>,
+    "examTitle": "<%= examTitle %>",
+    "subjectName": "<%= subjectName %>"
+  }
+  </script>
+
+  <!-- Review Modal -->
+  <div class="modal review-modal" id="reviewModal" onclick="if(event.target===this) closeReview()" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="modal-card">
+      <div class="modal-header review-header">
+        <h3 class="review-title" id="reviewTitle">Review Answers</h3>
+        <button class="close-modal" onclick="closeReview()" aria-label="Close review">&times;</button>
+      </div>
+      <div class="review-stats" id="reviewStats" aria-label="Answer statistics"></div>
+      <div class="review-grid" id="reviewGrid" role="listbox" aria-label="Questions"></div>
+      <div class="review-legend">
+        <span class="review-legend-item"><span class="review-legend-dot answered" style="background:var(--color-success-light);border-color:var(--color-success)"></span>Answered</span>
+        <span class="review-legend-item"><span class="review-legend-dot unanswered" style="background:var(--bg-tertiary);border-color:var(--border-medium)"></span>Unanswered</span>
+        <span class="review-legend-item"><span class="review-legend-dot flagged" style="background:var(--color-warning-light);border-color:var(--color-warning)"></span>Flagged</span>
+        <span class="review-legend-item"><span class="review-legend-dot current" style="background:transparent;border-color:var(--color-primary)"></span>Current</span>
+      </div>
+      <div class="review-actions">
+        <button class="btn btn-secondary" onclick="closeReview()">Back to Exam</button>
+        <button class="btn btn-primary" id="btnFinalSubmit" onclick="confirmSubmit()">Submit Exam</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Time-up Overlay -->
+  <div class="timeup-overlay" id="timeupOverlay" style="display:none;" role="alertdialog" aria-modal="true" aria-labelledby="timeupTitle">
+    <div class="timeup-card">
+      <svg class="timeup-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      <h2 class="timeup-title" id="timeupTitle">Time's Up!</h2>
+      <p class="timeup-message">The exam has been automatically submitted.</p>
+      <button class="timeup-btn" onclick="location.href='/student/exam/<%= examId %>/result'">View Results</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script>
+    // ============================================================
+    // EXAM APPLICATION LOGIC — Persistent State
+    // ============================================================
+    (function() {
+      'use strict';
+
+      // ---- Storage Keys ----
+      const STORAGE_PREFIX = 'exam_';
+      const getStorageKey = (examId, key) => `${STORAGE_PREFIX}${examId}_${key}`;
+
+      // ---- State ----
+      const data = JSON.parse(document.getElementById('exam-data').textContent);
+      const Exam = {
+        examId: data.examId,
+        duration: data.duration * 60, // convert minutes to seconds
+        questions: data.questions,
+        examTitle: data.examTitle,
+        subjectName: data.subjectName,
+        current: 0,
+        answers: {},      // { questionId: optionIndex }
+        flagged: new Set(),
+        timerId: null,
+        startTime: null,
+        submitted: false,
+        isRestored: false
+      };
+
+      // ---- DOM Elements ----
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+      const timerDisplay = $('#timerDisplay');
+      const progressFill = $('#progressFill');
+      const slidesContainer = $('#slidesContainer');
+      const navDots = $('#navDots');
+      const btnPrev = $('#btnPrev');
+      const btnNext = $('#btnNext');
+      const btnSubmit = $('#btnSubmit');
+      const reviewModal = $('#reviewModal');
+      const reviewGrid = $('#reviewGrid');
+      const reviewStats = $('#reviewStats');
+      const btnFinalSubmit = $('#btnFinalSubmit');
+      const timeupOverlay = $('#timeupOverlay');
+
+      // ---- Persistence Helpers ----
+      const saveState = () => {
+        try {
+          localStorage.setItem(getStorageKey(Exam.examId, 'answers'), JSON.stringify(Exam.answers));
+          localStorage.setItem(getStorageKey(Exam.examId, 'current'), Exam.current.toString());
+          localStorage.setItem(getStorageKey(Exam.examId, 'flagged'), JSON.stringify([...Exam.flagged]));
+          localStorage.setItem(getStorageKey(Exam.examId, 'startTime'), Exam.startTime.toString());
+        } catch (e) { console.warn('Failed to save exam state:', e); }
+      };
+
+      const loadState = () => {
+        try {
+          const savedAnswers = localStorage.getItem(getStorageKey(Exam.examId, 'answers'));
+          const savedCurrent = localStorage.getItem(getStorageKey(Exam.examId, 'current'));
+          const savedFlagged = localStorage.getItem(getStorageKey(Exam.examId, 'flagged'));
+          const savedStartTime = localStorage.getItem(getStorageKey(Exam.examId, 'startTime'));
+
+          if (savedAnswers) Exam.answers = JSON.parse(savedAnswers);
+          if (savedCurrent !== null) Exam.current = parseInt(savedCurrent, 10);
+          if (savedFlagged) Exam.flagged = new Set(JSON.parse(savedFlagged));
+          if (savedStartTime) Exam.startTime = parseInt(savedStartTime, 10);
+
+          Exam.isRestored = !!(savedAnswers || savedCurrent || savedFlagged || savedStartTime);
+        } catch (e) { console.warn('Failed to load exam state:', e); }
+      };
+
+      const clearState = () => {
+        try {
+          ['answers', 'current', 'flagged', 'startTime'].forEach(key => {
+            localStorage.removeItem(getStorageKey(Exam.examId, key));
+          });
+        } catch (e) { console.warn('Failed to clear exam state:', e); }
+      };
+
+      // ---- Utility ----
+      const escapeHtml = (str) => String(str || '')
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
+        .replace(/"/g, '"')
+        .replace(/'/g, '&#039;');
+
+      const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+      };
+
+      const updateProgress = () => {
+        const pct = ((Exam.current + 1) / Exam.questions.length) * 100;
+        progressFill.style.width = `${pct}%`;
+        progressFill.parentElement.setAttribute('aria-valuenow', Math.round(pct));
+      };
+
+      const updateTimer = () => {
+        const elapsed = Math.floor((Date.now() - Exam.startTime) / 1000);
+        Exam.duration = Math.max(0, (data.duration * 60) - elapsed);
+        timerDisplay.textContent = formatTime(Exam.duration);
+        if (Exam.duration <= 60) timerDisplay.classList.add('urgent');
+        if (Exam.duration <= 0) {
+          clearInterval(Exam.timerId);
+          autoSubmit();
+        }
+      };
+
+      // ---- Render ----
+      const renderSlides = () => {
+        slidesContainer.innerHTML = Exam.questions.map((q, i) => `
+          <article class="question-slide ${i === Exam.current ? 'active' : ''}" data-index="${i}" role="tabpanel" aria-labelledby="q-${q.id}-label">
+            <div class="question-card">
+              <div class="q-head">
+                <span class="q-number">Question ${i + 1}</span>
+                <span class="q-count">${i + 1} of ${Exam.questions.length}</span>
+              </div>
+              <h2 class="question-text" id="q-${q.id}-label">${escapeHtml(q.question_text)}</h2>
+              <div class="options" role="radiogroup" aria-label="Answer options">
+                ${q.options.map((opt, oi) => `
+                  <label class="option ${Exam.answers[q.id] === oi ? 'selected' : ''}" data-qid="${q.id}" data-oi="${oi}" tabindex="0">
+                    <input type="radio" name="q-${q.id}" value="${oi}" ${Exam.answers[q.id] === oi ? 'checked' : ''} aria-label="Option ${String.fromCharCode(65 + oi)}">
+                    <span class="option-marker">${String.fromCharCode(65 + oi)}.</span>
+                    <span class="option-label">${escapeHtml(opt)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          </article>
+        `).join('');
+
+        $$('.option').forEach(el => {
+          el.addEventListener('click', () => selectOption(el));
+          el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectOption(el); }
+          });
+        });
+      };
+
+      const renderNavDots = () => {
+        navDots.innerHTML = Exam.questions.map((q, i) => `
+          <button class="nav-dot ${i === Exam.current ? 'active' : ''} ${Exam.answers[q.id] !== undefined ? 'answered' : ''} ${Exam.flagged.has(q.id) ? 'flagged' : ''}"
+                  data-index="${i}" aria-label="Question ${i + 1} ${Exam.answers[q.id] !== undefined ? '(answered)' : '(unanswered)'} ${Exam.flagged.has(q.id) ? '(flagged)' : ''}"
+                  title="Question ${i + 1}${Exam.answers[q.id] !== undefined ? ' ✓' : ''}${Exam.flagged.has(q.id) ? ' ⚑' : ''}">
+            ${i + 1}
+          </button>
+        `).join('');
+
+        $$('.nav-dot').forEach(btn => {
+          btn.addEventListener('click', () => goToSlide(parseInt(btn.dataset.index, 10)));
+        });
+      };
+
+      const renderReview = () => {
+        const answered = Object.keys(Exam.answers).length;
+        const unanswered = Exam.questions.length - answered;
+        const flagged = Exam.flagged.size;
+        reviewStats.innerHTML = `
+          <span class="review-stat answered">${answered} Answered</span>
+          <span class="review-stat unanswered">${unanswered} Unanswered</span>
+          <span class="review-stat flagged">${flagged} Flagged</span>
+        `;
+        reviewGrid.innerHTML = Exam.questions.map((q, i) => `
+          <button class="review-dot ${Exam.answers[q.id] !== undefined ? 'answered' : 'unanswered'} ${Exam.flagged.has(q.id) ? 'flagged' : ''} ${i === Exam.current ? 'current' : ''}"
+                  data-index="${i}" role="option" aria-selected="${i === Exam.current}"
+                  aria-label="Question ${i + 1}: ${Exam.answers[q.id] !== undefined ? 'Answered' : 'Unanswered'}${Exam.flagged.has(q.id) ? ', Flagged' : ''}">
+            ${i + 1}
+          </button>
+        `).join('');
+
+        $$('.review-dot').forEach(btn => {
+          btn.addEventListener('click', () => {
+            goToSlide(parseInt(btn.dataset.index, 10));
+            closeReview();
+          });
+        });
+      };
+
+      const updateNavButtons = () => {
+        btnPrev.disabled = Exam.current === 0;
+        const isLast = Exam.current === Exam.questions.length - 1;
+        btnNext.style.display = isLast ? 'none' : 'flex';
+        btnSubmit.style.display = isLast ? 'flex' : 'none';
+      };
+
+      const refreshUI = () => {
+        renderNavDots();
+        updateNavButtons();
+        updateProgress();
+        saveState();
+      };
+
+      // ---- Navigation ----
+      const goToSlide = (index) => {
+        if (index < 0 || index >= Exam.questions.length) return;
+        $$('.question-slide').forEach(s => s.classList.remove('active'));
+        slidesContainer.children[index]?.classList.add('active');
+        Exam.current = index;
+        refreshUI();
+      };
+
+      const nextSlide = () => goToSlide(Exam.current + 1);
+      const prevSlide = () => goToSlide(Exam.current - 1);
+
+      // ---- Answer Selection ----
+      const selectOption = (el) => {
+        const qid = el.dataset.qid;
+        const oi = parseInt(el.dataset.oi, 10);
+        Exam.answers[qid] = oi;
+        $$(`.option[data-qid="${qid}"]`).forEach(o => o.classList.remove('selected'));
+        el.classList.add('selected');
+        el.querySelector('input').checked = true;
+        refreshUI();
+      };
+
+      // ---- Flag Toggle ----
+      const toggleFlag = () => {
+        const qid = Exam.questions[Exam.current].id;
+        if (Exam.flagged.has(qid)) Exam.flagged.delete(qid);
+        else Exam.flagged.add(qid);
+        refreshUI();
+      };
+
+      // ---- Review Modal ----
+      const openReview = () => {
+        renderReview();
+        reviewModal.classList.add('show');
+      };
+      const closeReview = () => reviewModal.classList.remove('show');
+
+      // ---- Timer ----
+      const startTimer = () => {
+        if (!Exam.startTime) {
+          Exam.startTime = Date.now();
+        }
+        updateTimer();
+        Exam.timerId = setInterval(updateTimer, 500); // Update every 500ms for smooth timer
+      };
+
+      // ---- Submit ----
+      const submitExam = async () => {
+        if (Exam.submitted) return;
+        Exam.submitted = true;
+        clearInterval(Exam.timerId);
+
+        const payload = {};
+        Exam.questions.forEach(q => {
+          const a = Exam.answers[q.id];
+          payload[q.id] = a === undefined ? -1 : String.fromCharCode(65 + a);
+        });
+
+        try {
+          const res = await fetch(`/student/exam/${Exam.examId}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: payload })
+          });
+          if (res.ok) {
+            clearState(); // Clear persisted state on successful submit
+            const result = await res.json();
+            if (result.redirect) location.href = result.redirect;
+            else location.href = `/student/exam/${Exam.examId}/result`;
+          } else {
+            uiToast('Submit failed. Please try again.', 'error');
+            Exam.submitted = false;
+            startTimer();
+          }
+        } catch (e) {
+          console.error(e);
+          uiToast('Network error. Please check your connection and try again.', 'error');
+          Exam.submitted = false;
+          startTimer();
+        }
+      };
+
+      const autoSubmit = () => {
+        timeupOverlay.style.display = 'flex';
+        submitExam();
+      };
+
+      const confirmSubmit = async () => {
+        const ok = await uiConfirm('Are you sure you want to submit? You cannot change answers after submitting.', { confirmText: 'Submit Exam', danger: true });
+        if (ok) submitExam();
+      };
+
+      // ---- Keyboard Shortcuts ----
+      document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (reviewModal.classList.contains('show')) {
+          if (e.key === 'Escape') closeReview();
+          return;
+        }
+        switch (e.key) {
+          case 'ArrowRight': e.preventDefault(); nextSlide(); break;
+          case 'ArrowLeft': e.preventDefault(); prevSlide(); break;
+          case 'Enter':
+            if (Exam.current === Exam.questions.length - 1) {
+              e.preventDefault();
+              confirmSubmit();
+            } else {
+              nextSlide();
+            }
+            break;
+          case 'f':
+          case 'F': toggleFlag(); break;
+          case 'r':
+          case 'R': openReview(); break;
+          case '1': case '2': case '3': case '4':
+            const idx = parseInt(e.key, 10) - 1;
+            const opts = $$(`.option[data-qid="${Exam.questions[Exam.current].id}"]`);
+            if (opts[idx]) selectOption(opts[idx]);
+            break;
+        }
+      });
+
+      // ---- Button Events ----
+      btnPrev.addEventListener('click', prevSlide);
+      btnNext.addEventListener('click', nextSlide);
+      btnSubmit.addEventListener('click', confirmSubmit);
+      btnFinalSubmit.addEventListener('click', confirmSubmit);
+
+      // ---- Init ----
+      loadState();
+
+      // Initialize startTime if not restored
+      if (!Exam.startTime) {
+        Exam.startTime = Date.now();
+      }
+
+      renderSlides();
+      renderNavDots();
+      refreshUI();
+      startTimer();
+
+      // Expose for inline onclick
+      window.goToSlide = goToSlide;
+      window.openReview = openReview;
+      window.closeReview = closeReview;
+      window.toggleFlag = toggleFlag;
+    })();
+  </script>
+</body>
+</html>

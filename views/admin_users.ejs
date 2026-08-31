@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users - Online Exam System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <div class="sidebar-profile">
+        <div class="avatar"><%= (user && (user.full_name || user.username) ? (user.full_name || user.username).charAt(0).toUpperCase() : 'A') %></div>
+        <div class="profile-meta">
+          <span class="profile-name"><%= user ? (user.full_name || user.username) : 'Admin' %></span>
+          <span class="profile-role">Administrator</span>
+        </div>
+      </div>
+    <nav>
+      <a href="/admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg> Dashboard</a>
+      <a href="/admin/questions/add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg> Questions</a>
+      <a href="/admin/exams/create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"></polyline></svg> Create Exam</a>
+      <a href="/admin/scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg> Scores</a>
+      <a href="/admin/users" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Users</a>
+      <a href="/admin/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l-.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 15a1.65 1.65 0 0 0 1 1.51V17a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1-1.51z"></path></svg> Settings</a>
+      <a href="/logout" class="logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg> Logout</a>
+    </nav>
+  </div>
+  <div class="main-content">
+    <div class="page-header">
+      <h1>Users</h1>
+      <p>List of signed up users</p>
+    </div>
+
+    <% if (signupLink) { %>
+    <div class="card" style="margin-bottom: var(--space-6);">
+      <div class="card-header"><h3>Your Students' Sign-up Link</h3></div>
+      <div class="card-body">
+        <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:var(--space-3);">
+          Share this link with your students. Only they will see the subjects <em>you</em> created, and they'll be enrolled as <em>your</em> students.
+        </p>
+        <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap;">
+          <input type="text" id="signupLinkInput" readonly value="<%= signupLink %>" style="flex:1; min-width:260px; font-size:0.85rem;">
+          <button type="button" class="btn btn-primary" onclick="copySignupLink()" id="copyLinkBtn">Copy Link</button>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+    <% if (superAdmin) { %>
+    <div class="card" style="margin-bottom: var(--space-6);">
+      <div class="card-header"><h3>Administrator Accounts</h3><span class="meta">Main admin only</span></div>
+      <div class="card-body">
+        <form action="/admin/users/create-admin" method="post" style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:flex-end; margin-bottom:var(--space-4);">
+          <div class="form-group" style="margin:0;">
+            <label>Full Name</label>
+            <input type="text" name="full_name" placeholder="e.g., Prof. Juan Dela Cruz">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Username</label>
+            <input type="text" name="username" placeholder="admin username" required>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Password</label>
+            <input type="text" name="password" placeholder="temporary/admin password" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="padding:0.6rem 1rem;">+ Create Admin</button>
+        </form>
+        <% if (admins && admins.length) { %>
+        <table class="table">
+          <thead><tr><th>#</th><th>Full Name</th><th>Username</th><th>Created</th><th class="text-right">Sign-up Link</th></tr></thead>
+          <tbody>
+            <% admins.forEach(a => { %>
+            <tr>
+              <td><%= a.id %></td>
+              <td class="cell-primary"><%= a.full_name || '—' %><% if (a.id===1) { %>&nbsp;<span class="badge badge-admin">SUPER</span><% } %></td>
+              <td><%= a.username %></td>
+              <td class="cell-muted"><%= a.created_at %></td>
+              <td class="text-right">
+                <form action="/admin/users/signup-link" method="post" class="d-inline">
+                  <input type="hidden" name="id" value="<%= a.id %>">
+                  <button class="btn btn-view btn-sm" type="submit">Show / Copy Link</button>
+                </form>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+
+    <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+
+    <form method="get" action="/admin/users" class="search-form">
+      <input type="text" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>" placeholder="Search name, username, course, year, SET, subject, role...">
+      <button type="submit" class="btn btn-primary">Search</button>
+      <% if (typeof search !== 'undefined' && search) { %><a href="/admin/users" class="btn btn-ghost">Clear</a><% } %>
+    </form>
+
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div class="card-header">
+        <h3>All Users (<%= typeof total !== 'undefined' ? total : users.length %>)</h3>
+        <span class="meta">Page <%= typeof page !== 'undefined' ? page : 1 %> / <%= typeof totalPages !== 'undefined' ? totalPages : 1 %> • 10 per page</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Full Name</th>
+              <th>Username</th>
+              <th>Course</th>
+              <th>Year</th>
+              <th>SET</th>
+              <th>Subjects</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (users.length === 0) { %>
+              <tr><td colspan="11" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No users yet.</td></tr>
+            <% } %>
+            <% users.forEach(u => { 
+                 let subs = [];
+                 try { subs = u.subjects ? JSON.parse(u.subjects) : []; } catch(e){}
+            %>
+              <tr>
+                <td><%= u.id %></td>
+                <td class="cell-primary"><%= u.full_name || '—' %></td>
+                <td><%= u.username %></td>
+                <td><%= u.course || '—' %></td>
+                <td class="text-center"><span class="badge badge-warning"><%= u.year_level || '—' %></span></td>
+                <td class="text-center"><span class="badge badge-set"><%= u.set_group || '—' %></span></td>
+                <td style="max-width:200px;">
+                  <% if (subs.length) { subs.forEach(s => { %><span class="badge badge-subj"><%= s %></span> <% }) } else { %><span class="cell-muted">—</span><% } %>
+                </td>
+                <td><span class="badge <%= u.role==='admin' ? 'badge-admin' : 'badge-role' %>"><%= u.role %></span></td>
+                <td>
+                  <% if (u.is_locked) { %><span class="badge badge-danger">Locked (<%= u.failed_attempts || 3 %>/3)</span>
+                  <% } else if (u.failed_attempts > 0) { %><span class="badge badge-warning"><%= u.failed_attempts %>/3</span>
+                  <% } else { %><span class="badge badge-success">Active</span><% } %>
+                </td>
+                <td class="cell-muted" style="font-size:var(--text-xs);"><%= u.created_at %></td>
+                <td class="text-right">
+                  <div class="actions">
+                    <button class="btn btn-view btn-sm" onclick="openView(<%= u.id %>)">View</button>
+                    <button class="btn btn-edit btn-sm" onclick="openEdit(<%= u.id %>)">Edit</button>
+                    <button class="btn btn-reset btn-sm" onclick="openReset(<%= u.id %>, '<%= u.username %>')">Reset</button>
+                    <% if (u.is_locked) { %>
+                    <form action="/admin/users/unlock" method="post" class="d-inline">
+                      <input type="hidden" name="id" value="<%= u.id %>">
+                      <button class="btn btn-success btn-sm" type="submit">Unlock</button>
+                    </form>
+                    <% } %>
+                    <form action="/admin/users/delete" method="post" class="d-inline" data-message="Delete <%= u.username %>?<br><small>Their account and all exam records will be permanently removed.</small>" data-confirm-text="Delete" data-danger="true">
+                      <input type="hidden" name="id" value="<%= u.id %>">
+                      <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              <!-- View Modal Data -->
+              <div id="view-<%= u.id %>" class="modal" onclick="if(event.target===this) closeView(<%= u.id %>)">
+                <div class="modal-card">
+                  <div class="modal-header"><h3>View — <%= u.username %></h3><button class="close-modal" onclick="closeView(<%= u.id %>)">&times;</button></div>
+                  <div class="view-row"><span class="view-label">Full Name</span><span><%= u.full_name || '—' %></span></div>
+                  <div class="view-row"><span class="view-label">Username</span><span><%= u.username %></span></div>
+                  <div class="view-row"><span class="view-label">Course</span><span><%= u.course || '—' %></span></div>
+                  <div class="view-row"><span class="view-label">Year</span><span><%= u.year_level || '—' %></span></div>
+                  <div class="view-row"><span class="view-label">SET</span><span><%= u.set_group || '—' %></span></div>
+                  <div class="view-row"><span class="view-label">Subjects</span><span><%= subs.length ? subs.join(', ') : '—' %></span></div>
+                  <div class="view-row"><span class="view-label">Role</span><span><%= u.role %></span></div>
+                  <div class="view-row"><span class="view-label">Status</span><span><%= u.is_locked ? 'Locked ('+(u.failed_attempts||3)+'/3)' : (u.failed_attempts ? u.failed_attempts+'/3 attempts' : 'Active') %></span></div>
+                  <div class="view-row"><span class="view-label">Created</span><span><%= u.created_at %></span></div>
+                  <div style="margin-top:1rem; text-align:right;"><button class="btn btn-view" onclick="closeView(<%= u.id %>)">Close</button></div>
+                </div>
+              </div>
+              <!-- Edit Modal -->
+              <div id="edit-<%= u.id %>" class="modal" onclick="if(event.target===this) closeEdit(<%= u.id %>)">
+                <div class="modal-card">
+                  <div class="modal-header"><h3>Edit — <%= u.username %></h3><button class="close-modal" onclick="closeEdit(<%= u.id %>)">&times;</button></div>
+                  <form action="/admin/users/update" method="post">
+                    <input type="hidden" name="id" value="<%= u.id %>">
+                    <div class="form-group"><label>Full Name</label><input type="text" name="full_name" value="<%= u.full_name || '' %>" required></div>
+                    <div class="form-group"><label>Course</label><input type="text" name="course" value="<%= u.course || '' %>" required></div>
+                    <div class="form-group"><label>Year Level</label>
+                      <select name="year_level" required>
+                        <option value="1st Year" <%= u.year_level==='1st Year'?'selected':'' %>>1st Year</option>
+                        <option value="2nd Year" <%= u.year_level==='2nd Year'?'selected':'' %>>2nd Year</option>
+                        <option value="3rd Year" <%= u.year_level==='3rd Year'?'selected':'' %>>3rd Year</option>
+                        <option value="4th Year" <%= u.year_level==='4th Year'?'selected':'' %>>4th Year</option>
+                      </select>
+                    </div>
+                    <div class="form-group"><label>SET (A-Z)</label>
+                      <select name="set_group" required>
+                        <option value="">— Select SET —</option>
+                        <% for(let c=65;c<=90;c++){ const l=String.fromCharCode(c); %>
+                          <option value="<%= l %>" <%= u.set_group===l ? 'selected' : '' %>><%= l %></option>
+                        <% } %>
+                      </select>
+                    </div>
+                    <div class="form-group"><label>Username</label><input type="text" name="username" value="<%= u.username %>" required></div>
+                    <div class="form-group"><label>Role</label>
+                      <select name="role"><option value="student" <%= u.role==='student'?'selected':'' %>>student</option><option value="admin" <%= u.role==='admin'?'selected':'' %>>admin</option></select>
+                    </div>
+                    <div class="form-group"><label>Subjects</label>
+                      <div class="subjects-edit">
+                        <% subjects.forEach(s => { %>
+                          <label><input type="checkbox" name="subjects" value="<%= s.name %>" <%= subs.includes(s.name) ? 'checked' : '' %>> <%= s.name %></label>
+                        <% }) %>
+                        <% if (subjects.length===0) { %><span style="color:var(--text-muted); font-size:0.8rem;">No subjects in Settings</span><% } %>
+                      </div>
+                    </div>
+                    <div class="card-footer">
+                      <button type="button" class="btn btn-secondary" onclick="closeEdit(<%= u.id %>)">Cancel</button>
+                      <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+              <!-- Reset Modal -->
+              <div id="reset-<%= u.id %>" class="modal" onclick="if(event.target===this) closeReset(<%= u.id %>)">
+                <div class="modal-card" style="max-width:420px;">
+                  <div class="modal-header"><h3>Reset Password — <%= u.username %></h3><button class="close-modal" onclick="closeReset(<%= u.id %>)">&times;</button></div>
+                  <p style="color:var(--text-muted); font-size:0.85rem;">Leave blank to auto-generate <b>Temp####!</b> — give temp password to user to login, then they can <b>Change Password</b>.</p>
+                  <form action="/admin/users/reset-password" method="post">
+                    <input type="hidden" name="id" value="<%= u.id %>">
+                    <div class="form-group"><label>Temp Password (optional)</label><input type="text" name="temp_password" placeholder="e.g., Temp1234!"></div>
+                    <div class="card-footer">
+                      <button type="button" class="btn btn-secondary" onclick="closeReset(<%= u.id %>)">Cancel</button>
+                      <button type="submit" class="btn btn-warning">Reset</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer" style="justify-content: space-between;">
+        <span class="meta">Page <%= page %> of <%= totalPages %> • <%= total %> users • 10 per page</span>
+        <nav class="pagination" aria-label="Pagination">
+          <% if (page > 1) { %><a href="/admin/users?page=<%= page-1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" class="prev">‹ Prev</a><% } %>
+          <% for(let p=1; p<=totalPages; p++){ %>
+            <% if(p===page){ %><span class="current"><%= p %></span>
+            <% } else if(p<=2 || p>totalPages-1 || Math.abs(p-page)<=1){ %><a href="/admin/users?page=<%= p %><%= search ? '&search='+encodeURIComponent(search) : '' %>"><%= p %></a>
+            <% } else if((p===3 && page>4) || (p===totalPages-2 && page < totalPages-3)){ %><span class="ellipsis">…</span><% } %>
+          <% } %>
+          <% if (page < totalPages) { %><a href="/admin/users?page=<%= page+1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" class="next">Next ›</a><% } %>
+        </nav>
+      </div>
+    </div>
+    <p class="hint">Tip: Reset creates a <b>temporary password</b> — share it with the user. They login with it, then go to <b>Change Password</b> to make a new one.</p>
+  </div>
+  <script src="/ui.js"></script>
+  <script>
+    uiShowUrlAlerts();
+    uiConfirmForms();
+    function openView(id){ document.getElementById('view-'+id).classList.add('show'); }
+    function closeView(id){ document.getElementById('view-'+id).classList.remove('show'); }
+    function openEdit(id){ document.getElementById('edit-'+id).classList.add('show'); }
+    function closeEdit(id){ document.getElementById('edit-'+id).classList.remove('show'); }
+    function openReset(id){ document.getElementById('reset-'+id).classList.add('show'); }
+    function closeReset(id){ document.getElementById('reset-'+id).classList.remove('show'); }
+    function copySignupLink() {
+      const inp = document.getElementById('signupLinkInput');
+      const btn = document.getElementById('copyLinkBtn');
+      if (!inp) return;
+      inp.select(); inp.setSelectionRange(0, 99999);
+      let copied = false;
+      try { copied = document.execCommand('copy'); } catch(e){}
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(inp.value).then(() => { copied = true; }).catch(()=>{});
+      }
+      if (copied && btn) { btn.textContent = 'Copied!'; setTimeout(()=>{ btn.textContent='Copy Link'; }, 2000); }
+    }
+  </script>
+  
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+</body>
+</html>

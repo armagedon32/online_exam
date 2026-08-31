@@ -1,0 +1,28 @@
+node_modules/
+database.db
+*.log
+.env
+.DS_Store
+
+# Development helper scripts & one-off patches
+add_btn_warning.js
+add_footer.js
+add_important.js
+append_exam_utils.js
+clean_styles.js
+fix_styles.js
+remove_old_exam_styles.js
+update_exam_styles.js
+setup.js
+test_login2.js
+start_server.bat
+
+# Temp / backup / output files
+error.txt
+output.txt
+deepseek_questions.csv
+take_exam_backup.ejs
+
+# Unused HTML/backup view copies
+views/*.html
+views/*.ejs.new

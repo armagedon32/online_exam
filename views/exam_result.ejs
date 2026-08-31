@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exam Result - <%= examTitle %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --success: #059669;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --transition: 150ms ease;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+
+    .result-card {
+      background: var(--card);
+      max-width: 520px;
+      width: 100%;
+      border-radius: var(--radius);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--border);
+    }
+
+    .icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 1rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon.success { background: #dcfce7; color: #059669; }
+    .icon.warning { background: #fef3c7; color: #d97706; }
+    .icon svg { width: 36px; height: 36px; }
+
+    h1 { margin: 0 0 0.35rem 0; font-size: 1.5rem; font-weight: 800; }
+    .sub { color: var(--text-muted); font-size: 0.9rem; margin: 0 0 1.5rem 0; }
+
+    .score-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin: 1.5rem 0; }
+    .score-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; padding: 1rem 0.5rem; }
+    .score-box strong { display: block; font-size: 1.6rem; font-weight: 800; }
+    .score-box span { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .score-box.total { background: #eef2ff; border-color: #c7d2fe; }
+    .score-box.percent { background: #f0fdf4; border-color: #bbf7d0; }
+    .score-box.percent.fail { background: #fef2f2; border-color: #fecaca; }
+
+    .bar { width: 100%; height: 10px; background: #e2e8f0; border-radius: 10px; overflow: hidden; margin: 1rem 0; }
+    .bar-fill { height: 100%; border-radius: 10px; transition: width 0.6s ease; }
+    .bar-fill.success { background: var(--success); }
+    .bar-fill.warning { background: var(--warning); }
+    .bar-fill.danger { background: var(--danger); }
+
+    .actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+    .btn { flex: 1; padding: 0.85rem 1rem; border-radius: 10px; font-weight: 700; text-decoration: none; text-align: center; font-size: 0.9rem; border: 1px solid transparent; }
+    .btn-primary { background: var(--primary); color: white; border: none; }
+    .btn-secondary { background: var(--card); border-color: var(--border); color: var(--text); }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary:hover { background: #f1f5f9; }
+
+    .meta { margin-top: 1rem; font-size: 0.8rem; color: var(--text-muted); }
+
+    .footer { margin-top: 2.5rem; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; }
+    .footer strong { color: var(--text); }
+    .footer small { color: var(--text-muted); }
+
+    /* Theme toggle + manual dark mode */
+    .theme-toggle { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; font-size: 0.85rem; font-weight: 600; font-family: inherit; }
+    .theme-toggle:hover { border-color: var(--primary); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .i-moon { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-moon { display: inline; }
+    .theme-float { position: fixed; top: 1rem; right: 1rem; z-index: 50; box-shadow: var(--shadow-lg); }
+
+    :root[data-theme="dark"] {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+    :root[data-theme="dark"] .score-box { background: #1e293b; border-color: #334155; }
+    :root[data-theme="dark"] .score-box.total { background: #312e81; border-color: #4338ca; }
+    :root[data-theme="dark"] .score-box.percent { background: #052e16; border-color: #166534; }
+    :root[data-theme="dark"] .score-box.percent.fail { background: #450a0a; border-color: #991b1b; }
+    :root[data-theme="dark"] .bar { background: #334155; }
+    :root[data-theme="dark"] .btn-secondary { background: #1e293b; color: var(--text); border-color: #334155; }
+  </style>
+</head>
+<body>
+  <div class="result-card">
+    <div class="icon <%= percentage >= 50 ? 'success' : 'warning' %>">
+      <% if (percentage >= 50) { %>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+      <% } else { %>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      <% } %>
+    </div>
+    <h1><%= percentage >= 50 ? 'Congratulations!' : 'Keep Practicing!' %></h1>
+    <p class="sub">You scored <b><%= score %> / <%= total %></b> on <b><%= examTitle %></b></p>
+    <div class="score-grid">
+      <div class="score-box"><strong><%= score %></strong><span>Score</span></div>
+      <div class="score-box total"><strong><%= total %></strong><span>Total</span></div>
+      <div class="score-box percent <%= percentage < 50 ? 'fail' : '' %>"><strong><%= percentage %>%</strong><span>Percent</span></div>
+    </div>
+    <div class="bar"><div class="bar-fill <%= percentage >= 75 ? 'success' : percentage >= 50 ? 'warning' : 'danger' %>" style="width:<%= percentage %>%"></div></div>
+    <p style="font-size:0.85rem; color:var(--text-muted); margin:0;">
+      <%= percentage >= 75 ? 'Excellent work!' : percentage >= 50 ? 'Good job — you passed!' : 'You can retake or review your subjects.' %>
+    </p>
+    <div class="actions">
+      <a href="/student" class="btn btn-secondary">← Dashboard</a>
+      <a href="/student" class="btn btn-primary">Take Another</a>
+    </div>
+    <div class="meta">Result saved to admin • <a href="/logout" style="color:var(--text-muted);">Logout</a></div>
+  </div>
+  
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+</body>
+</html>

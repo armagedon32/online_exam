@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scores Report — Online Exam System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { background: var(--bg-tertiary); }
+    .report-page { max-width: 980px; margin: var(--space-8) auto; padding: 0 var(--space-4); }
+    .no-print { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+    .report-sheet { background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-xl); padding: var(--space-8); box-shadow: var(--shadow-lg); }
+
+    .report-brand { display: flex; align-items: center; gap: var(--space-4); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--space-5); margin-bottom: var(--space-6); }
+    .report-logo { width: 48px; height: 48px; background: linear-gradient(135deg, var(--color-primary), #6366f1); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; color: var(--color-white); flex-shrink: 0; }
+    .report-logo svg { width: 26px; height: 26px; }
+    .report-brand h1 { font-size: var(--text-2xl); font-weight: var(--font-extrabold); color: var(--text-primary); letter-spacing: -0.02em; margin: 0; }
+    .report-brand p { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-sm); }
+    .report-meta { margin-left: auto; text-align: right; font-size: var(--text-xs); color: var(--text-muted); line-height: 1.7; }
+
+    .report-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-8); }
+    .report-stat { background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: var(--space-4); text-align: center; }
+    .report-stat .val { font-size: var(--text-3xl); font-weight: var(--font-extrabold); color: var(--color-primary); line-height: 1.1; }
+    .report-stat .lbl { font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-weight: var(--font-semibold); }
+
+    .report-exam { padding: var(--space-6) 0; border-top: 1px solid var(--border-light); }
+    .report-exam:first-of-type { border-top: none; padding-top: 0; }
+    .exam-title-wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-2); }
+    .exam-title-wrap h2 { font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--text-primary); margin: 0; }
+    .exam-badges { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+    .report-set-block { margin-top: var(--space-5); }
+    .set-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+    .set-badge { background: var(--color-primary); color: var(--color-white); font-weight: var(--font-extrabold); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-size: var(--text-sm); letter-spacing: 0.04em; min-width: 64px; text-align: center; }
+    .set-line { flex: 1; height: 2px; background: var(--color-primary-light); border-radius: var(--radius-full); }
+    .set-count { font-size: var(--text-sm); color: var(--text-muted); font-weight: var(--font-semibold); }
+    .year-head { font-size: var(--text-sm); font-weight: var(--font-bold); color: var(--color-primary-dark); text-transform: uppercase; letter-spacing: 0.05em; margin: var(--space-4) 0 var(--space-2); }
+    .year-head .year-stats { color: var(--text-muted); font-weight: var(--font-medium); text-transform: none; letter-spacing: 0; margin-left: var(--space-2); }
+
+    table.report-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+    table.report-table th { background: var(--bg-tertiary); text-align: left; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); padding: var(--space-2) var(--space-3); border: 1px solid var(--border-light); }
+    table.report-table td { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-light); color: var(--text-primary); }
+    table.report-table tbody tr:nth-child(odd) { background: var(--color-50); }
+    table.report-table td.score, table.report-table td.percent { font-weight: var(--font-bold); }
+    table.report-table td.score { color: var(--color-success); }
+    table.report-table td.percent { color: var(--color-primary); }
+
+    .report-empty { text-align: center; color: var(--text-muted); padding: var(--space-10) 0; }
+    .report-empty svg { width: 56px; height: 56px; margin: 0 auto var(--space-4); opacity: 0.4; }
+
+    .print-actions { display: flex; gap: var(--space-3); justify-content: flex-end; margin-bottom: var(--space-4); }
+
+    @media print {
+      body { background: none; }
+      .no-print, .print-actions, .report-brand .report-meta a, .sidebar { display: none !important; }
+      .report-page { margin: 0; padding: 0; }
+      .report-sheet { box-shadow: none; border: none; border-radius: 0; padding: var(--space-4); }
+      .report-exam { page-break-inside: avoid; }
+      .report-set-block { page-break-inside: avoid; }
+      table.report-table th { background: var(--color-100) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .set-badge, .report-logo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="report-page">
+    <div class="print-actions no-print">
+      <a href="/admin/scores" class="btn btn-ghost">← Scores</a>
+      <button type="button" class="btn btn-primary" onclick="window.print()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        Print Report
+      </button>
+    </div>
+
+    <div class="report-sheet" style="padding-top: var(--space-6);">
+      <div class="report-brand">
+        <div class="report-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        </div>
+        <div>
+          <h1>Scores Report</h1>
+          <p>All students who took exams — grouped by SET &amp; Year</p>
+        </div>
+        <div class="report-meta">
+          Generated: <%= generatedAt.toLocaleString() %><br>
+          Prepared by: <strong><%= user ? (user.full_name || user.username) : 'Administrator' %></strong>
+        </div>
+      </div>
+
+      <div class="report-stats">
+        <div class="report-stat"><div class="val"><%= examsCount %></div><div class="lbl">Exams Taken</div></div>
+        <div class="report-stat"><div class="val"><%= totalStudents %></div><div class="lbl">Students</div></div>
+        <div class="report-stat"><div class="val"><%= overallAvg %></div><div class="lbl">Overall Avg Score</div></div>
+      </div>
+
+      <% if (report.length === 0) { %>
+        <div class="report-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <h3 style="color: var(--text-primary);">No records to print</h3>
+          <p>No students have taken any exams yet.</p>
+        </div>
+      <% } %>
+
+      <% report.forEach(exam => { %>
+        <section class="report-exam">
+          <div class="exam-title-wrap">
+            <h2><%= exam.title %></h2>
+            <div class="exam-badges">
+              <span class="badge badge-subj"><%= exam.subject %></span>
+              <% if (exam.semester) { %><span class="badge badge-set"><%= exam.semester %></span><% } %>
+              <% if (exam.period) { %><span class="badge badge-role"><%= exam.period %></span><% } %>
+              <span class="badge badge-admin"><%= exam.studentsCount %> students</span>
+            </div>
+          </div>
+          <p style="font-size:var(--text-sm); color:var(--text-muted); margin:0 0 var(--space-3);">
+            Average score: <strong style="color:var(--color-primary);"><%= exam.avgScore %></strong>
+            <% if (exam.questionCount) { %> · Average percentage: <strong style="color:var(--color-primary);"><%= exam.avgPercent %>%</strong> <% } %>
+            <% if (exam.questionCount) { %> · Questions: <strong><%= exam.questionCount %></strong><% } %>
+          </p>
+
+          <% exam.setsArray.forEach(set => { %>
+            <div class="report-set-block">
+              <div class="set-head">
+                <span class="set-badge">SET <%= set.set %></span>
+                <span class="set-line"></span>
+                <span class="set-count"><%= set.years.reduce((s, y) => s + y.count, 0) %> student<%= set.years.reduce((s, y) => s + y.count, 0) === 1 ? '' : 's' %></span>
+              </div>
+              <% set.years.forEach(grp => { %>
+                <div class="year-head">Year Level: <%= grp.year %><span class="year-stats">&mdash; <%= grp.count %> student<%= grp.count === 1 ? '' : 's' %>, avg score <%= grp.avg %></span></div>
+                <table class="report-table">
+                  <thead>
+                    <tr><th style="width:32px;">#</th><th>Student Name</th><th>Username</th><th>Course</th><th style="width:70px;">Score</th><th style="width:64px;">%</th><th>Completed</th></tr>
+                  </thead>
+                  <tbody>
+                    <% grp.students.forEach((st, i) => { %>
+                      <tr>
+                        <td><%= i + 1 %></td>
+                        <td><strong><%= st.full_name %></strong></td>
+                        <td><%= st.username %></td>
+                        <td><%= st.course %></td>
+                        <td class="score"><%= st.score %></td>
+                        <td class="percent"><%= st.percent %>%</td>
+                        <td><%= new Date(st.completed_at).toLocaleString() %></td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              <% }) %>
+            </div>
+          <% }) %>
+        </section>
+      <% }) %>
+    </div>
+
+    <footer class="footer no-print">
+      &copy; <%= new Date().getFullYear() %> Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+      <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+    </footer>
+  </div>
+</body>
+</html>

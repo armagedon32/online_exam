@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Question - Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  
+
+
+
+
+
+
+<style>
+    .footer { margin-top: 2.5rem; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 0.8rem; background: transparent; }
+    .footer strong { color: #1e293b; }
+    .footer small { color: #94a3b8; }</style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <div class="sidebar-profile">
+        <div class="avatar"><%= (user && (user.full_name || user.username) ? (user.full_name || user.username).charAt(0).toUpperCase() : 'A') %></div>
+        <div class="profile-meta">
+          <span class="profile-name"><%= user ? (user.full_name || user.username) : 'Admin' %></span>
+          <span class="profile-role">Administrator</span>
+        </div>
+      </div>
+    <nav>
+      <a href="/admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg> Dashboard</a>
+      <a href="/admin/questions/add" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg> Questions</a>
+      <a href="/admin/exams/create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"></polyline></svg> Create Exam</a>
+      <a href="/admin/scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg> Scores</a>
+      <a href="/admin/users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Users</a>
+      <a href="/admin/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 15a1.65 1.65 0 0 0 1 1.51V17a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1-1.51z"></path></svg> Settings</a>
+      <a href="/logout" class="logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg> Logout</a>
+    </nav>
+  </div>
+  <div class="main-content">
+    <div class="card" style="border-left:4px solid var(--primary);">
+      <h3 style="margin:0 0 0.6rem 0;">Bulk Upload — CSV</h3>
+      <p style="color:var(--muted); font-size:0.85rem; margin:0 0 1rem 0;">Download template format, fill questions, then upload. Columns: <code>subject,question,option_a,option_b,option_c,option_d,correct_answer</code> (correct_answer: A/B/C/D)</p>
+      <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">
+        <a href="/admin/questions/template" style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.6rem 1rem; background:white; border:1px solid var(--border); color:var(--text); text-decoration:none; border-radius:8px; font-weight:600; font-size:0.85rem;">⬇ Download Template (CSV)</a>
+        <form action="/admin/questions/upload" method="post" enctype="multipart/form-data" style="display:flex; gap:0.5rem; align-items:center; flex:1; min-width:260px;">
+          <input type="file" name="csv" accept=".csv" required style="flex:1; padding:0.5rem; border:1px solid var(--border); border-radius:8px; background:white; font-size:0.85rem;">
+          <button type="submit" style="padding:0.6rem 1rem; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; white-space:nowrap;">Upload CSV</button>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Add Single Question</h2></div>
+      <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+      <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+      <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+      <form action="/admin/questions/add" method="post" id="qForm">
+        <div class="form-group">
+          <label for="subject">Subject <span style="color: var(--muted); font-weight:400;">— from Settings</span></label>
+          <% if (subjects && subjects.length) { %>
+            <select id="subject" name="subject" required>
+              <option value="">— Select Subject —</option>
+              <% subjects.forEach(s => { %>
+                <option value="<%= s.name %>"><%= s.code ? s.code + ' - ' : '' %><%= s.name %> <%= s.schedule ? '('+ s.schedule +')' : '' %></option>
+              <% }) %>
+            </select>
+            <div class="hint">Subjects come from <a href="/admin/settings" style="color: var(--primary);">Settings → Add Subject</a>. Add schedule there.</div>
+          <% } else { %>
+            <input type="text" id="subject" name="subject" placeholder="e.g., Mathematics" required>
+            <div class="hint">No subjects yet — go to <a href="/admin/settings" style="color: var(--primary);">Settings</a> to add Name of Subject + Schedule (Date/Time), then it becomes a dropdown.</div>
+          <% } %>
+        </div>
+        <div class="form-group"><label for="question">Question</label><textarea id="question" name="question" placeholder="Enter the question" required></textarea></div>
+        <div class="form-group"><label for="option_a">Option A</label><input type="text" id="option_a" name="option_a" required></div>
+        <div class="form-group"><label for="option_b">Option B</label><input type="text" id="option_b" name="option_b" required></div>
+        <div class="form-group"><label for="option_c">Option C</label><input type="text" id="option_c" name="option_c" required></div>
+        <div class="form-group"><label for="option_d">Option D</label><input type="text" id="option_d" name="option_d" required></div>
+        <div class="form-group"><label for="correct_answer">Correct Answer</label><input type="text" id="correct_answer" name="correct_answer" placeholder="A, B, C, or D" required maxlength="1" style="text-transform: uppercase;"></div>
+        <button type="submit" class="btn btn-primary">Add Question</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    const qs = new URLSearchParams(location.search);
+    function showAlert(id, textId, msg){ if(msg){ document.getElementById(textId).textContent = decodeURIComponent(msg.replace(/\+/g,' ')); document.getElementById(id).classList.add('show'); setTimeout(()=>document.getElementById(id).classList.remove('show'), 4000); } }
+    showAlert('alertSuccess','alertSuccessText', qs.get('success'));
+    showAlert('alertError','alertErrorText', qs.get('error'));
+    showAlert('alertWarning','alertWarningText', qs.get('warning'));
+    const form = document.getElementById('qForm');
+    form.addEventListener('submit', e => {
+      const v = form.correct_answer.value.trim().toUpperCase();
+      if (!['A','B','C','D'].includes(v)) {
+        document.getElementById('alertErrorText').textContent = 'Correct answer must be A, B, C, or D';
+        document.getElementById('alertError').classList.add('show');
+        e.preventDefault();
+      } else form.correct_answer.value = v;
+    });
+  </script>
+
+  
+  
+  
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+</body>
+</html>
