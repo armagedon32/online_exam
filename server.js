@@ -36,9 +36,13 @@ app.get('/debug-session', (req, res) => {
 });
 
 // Database setup
-const db = new sqlite3.Database(path.join(__dirname, 'database.db'), (err) => {
+const DATABASE_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'database.db');
+if (path.dirname(DATABASE_PATH) !== '.') {
+  require('fs').mkdirSync(path.dirname(DATABASE_PATH), { recursive: true });
+}
+const db = new sqlite3.Database(DATABASE_PATH, (err) => {
   if (err) console.error('Database error:', err);
-  else console.log('Connected to database');
+  else console.log('Connected to database: ' + DATABASE_PATH);
 });
 
 // Create tables
