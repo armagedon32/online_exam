@@ -40,7 +40,7 @@ const DATABASE_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'databas
 if (path.dirname(DATABASE_PATH) !== '.') {
   require('fs').mkdirSync(path.dirname(DATABASE_PATH), { recursive: true });
 }
-const db = new sqlite3.Database(DATABASE_PATH, (err) => {
+let db = new sqlite3.Database(DATABASE_PATH, (err) => {
   if (err) console.error('Database error:', err);
   else console.log('Connected to database: ' + DATABASE_PATH);
 });
@@ -863,6 +863,101 @@ app.post('/change-password', isLoggedIn, (req, res) => {
     });
   });
 });
+
+// ===== BACKUP & RESTORE =====
+const fs = require('fs');
+
+function backupDatabase(destPath, cb) {
+  try {
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+  } catch (e) {}
+  // Use VACUUM INTO for a consistent full snapshot (the .backup() API is unreliable in node-sqlite3)
+  db.serialize(() => {
+    db.run("VACUUM INTO ?", [destPath], (err) => {
+      if (err) return cb(err);
+      cb(null);
+    });
+  });
+}
+
+app.get('/admin/backup', isLoggedIn, isAdmin, (req, res) => {
+  res.render('backup', { user: req.session });
+});
+
+app.get('/admin/backup/download', isLoggedIn, isAdmin, (req, res) => {
+  const tmp = path.join(__dirname, 'backups', 'download-' + Date.now() + '.db');
+  fs.mkdirSync(path.dirname(tmp), { recursive: true });
+  backupDatabase(tmp, (err) => {
+    if (err) return res.redirect('/admin/backup?error=' + encodeURIComponent('Backup failed: ' + err.message));
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    res.download(tmp, 'online_exam_backup_' + stamp + '.db', (dlErr) => {
+      fs.unlink(tmp, () => {});
+      if (dlErr && !res.headersSent) res.redirect('/admin/backup?error=' + encodeURIComponent('Download failed'));
+    });
+  });
+});
+
+app.post('/admin/backup/restore', isLoggedIn, isAdmin, upload.single('db'), (req, res) => {
+  if (!req.file) return res.redirect('/admin/backup?error=' + encodeURIComponent('No file uploaded'));
+  if (!req.file.originalname.toLowerCase().endsWith('.db') && !req.file.originalname.toLowerCase().endsWith('.sqlite')) {
+    return res.redirect('/admin/backup?error=' + encodeURIComponent('Please upload a .db backup file'));
+  }
+  // Validate it looks like a SQLite file
+  const buf = req.file.buffer;
+  const header = buf.slice(0, 15).toString();
+  if (!header.startsWith('SQLite format 3')) {
+    return res.redirect('/admin/backup?error=' + encodeURIComponent('Uploaded file is not a valid SQLite database'));
+  }
+
+  const backupDir = path.join(__dirname, 'backups', 'pre-restore');
+  fs.mkdirSync(backupDir, { recursive: true });
+  const preRestore = path.join(backupDir, 'pre-restore-' + Date.now() + '.db');
+  const tmpIncoming = path.join(__dirname, 'backups', 'incoming-' + Date.now() + '.db');
+
+  // 1) Snapshot current DB (safety copy) using the open connection
+  backupDatabase(preRestore, (err) => {
+    if (err) return res.redirect('/admin/backup?error=' + encodeURIComponent('Failed to snapshot current DB: ' + err.message));
+
+    // 2) Write the uploaded file to a temp path
+    fs.writeFile(tmpIncoming, buf, (werr) => {
+      if (werr) return res.redirect('/admin/backup?error=' + encodeURIComponent('Failed to write upload: ' + werr.message));
+
+      // 3) Close the DB, swap the file, reopen
+      db.close((cerr) => {
+        if (cerr) return res.redirect('/admin/backup?error=' + encodeURIComponent('Failed to close DB: ' + cerr.message));
+        fs.copyFileSync(tmpIncoming, DATABASE_PATH);
+        fs.unlink(tmpIncoming, () => {});
+        const nd = new sqlite3.Database(DATABASE_PATH);
+        let opened = false;
+        nd.on('open', () => {
+          if (opened) return;
+          opened = true;
+          db = nd;
+          res.redirect('/admin/backup?success=' + encodeURIComponent('Database restored successfully from backup'));
+        });
+        nd.on('error', (e) => {
+          if (opened) return;
+          res.redirect('/admin/backup?error=' + encodeURIComponent('Failed to reopen DB: ' + (e && e.message ? e.message : 'unknown')));
+        });
+      });
+    });
+  });
+});
+
+// Auto-backup the DB on server startup (kept in /backups, preserves snapshot safety net)
+(function createStartupBackup() {
+  try {
+    const dir = path.join(__dirname, 'backups', 'auto');
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
+    const dest = path.join(dir, 'auto-' + stamp + '.db');
+    backupDatabase(dest, (err) => {
+      if (!err) console.log('Startup auto-backup saved: ' + dest);
+    });
+  } catch (e) {
+    console.error('Auto-backup failed:', e.message);
+  }
+})();
 
 // Get LAN IP for the startup banner
 const os = require('os');

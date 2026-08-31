@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backup & Restore - Online Exam System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --success: #059669;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --sidebar: #0f172a;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --transition: 150ms ease;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 260px; background: var(--sidebar); color: white; height: 100vh;
+      position: fixed; left: 0; top: 0; padding: 1.5rem 1rem;
+      display: flex; flex-direction: column;
+    }
+    .sidebar .logo {
+      width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary), #6366f1);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem;
+    }
+    .sidebar .logo svg { width: 24px; height: 24px; color: white; }
+    .sidebar h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 1.5rem 0; color: white; letter-spacing: -0.02em; }
+    .sidebar nav { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
+    .sidebar nav a {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;
+      color: #94a3b8; text-decoration: none; border-radius: 8px;
+      font-size: 0.875rem; font-weight: 500;
+      transition: background var(--transition), color var(--transition);
+    }
+    .sidebar nav a:hover { background: rgba(37, 99, 235, 0.15); color: white; }
+    .sidebar nav a.active { background: rgba(37, 99, 235, 0.2); color: white; }
+    .sidebar nav a svg { width: 18px; height: 18px; }
+    .sidebar .logout { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem; }
+    .main-content { margin-left: 260px; padding: 2rem; }
+    @media (max-width: 900px) { .sidebar { display: none; } .main-content { margin-left: 0; padding: 1.5rem; } }
+    .card { background: var(--card); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); }
+    .alert { display: none; align-items: center; gap: 0.75rem; padding: 0.875rem 1rem; border-radius: 10px; margin-bottom: 1rem; font-size: 0.875rem; font-weight: 500; border: 1px solid; animation: slideIn 200ms ease; }
+    .alert.show { display: flex; }
+    .alert-success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+    .alert-danger { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .alert-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .alert svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .alert .close { margin-left: auto; background: none; border: none; cursor: pointer; opacity: 0.6; font-size: 1.1rem; line-height: 1; color: inherit; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+    .btn { padding: 0.7rem 1rem; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-danger { background: #fee2e2; color: var(--danger); }
+    .btn-danger:hover { background: #fecaca; }
+    .hint { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; }
+    .step { font-size: 0.875rem; margin-bottom: 0.35rem; }
+    .step b { color: var(--primary); }
+    .danger-zone { border: 1px solid #fecaca; background: #fff7f7; }
+    .footer { margin-top: 2.5rem; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; }
+    .footer strong { color: var(--text); }
+    .footer small { color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <div class="sidebar-profile">
+        <div class="avatar"><%= (user && (user.full_name || user.username) ? (user.full_name || user.username).charAt(0).toUpperCase() : 'A') %></div>
+        <div class="profile-meta">
+          <span class="profile-name"><%= user ? (user.full_name || user.username) : 'Admin' %></span>
+          <span class="profile-role">Administrator</span>
+        </div>
+      </div>
+    <nav>
+      <a href="/admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg> Dashboard</a>
+      <a href="/admin/questions/add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg> Questions</a>
+      <a href="/admin/exams/create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"></polyline></svg> Create Exam</a>
+      <a href="/admin/scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg> Scores</a>
+      <a href="/admin/users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Users</a>
+      <a href="/admin/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 15a1.65 1.65 0 0 0 1 1.51V17a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1-1.51z"></path></svg> Settings</a>
+      <a href="/admin/backup" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"></path><polyline points="16 13 12 17 8 13"></polyline><line x1="12" y1="9" x2="12" y2="17"></line></svg> Backup & Restore</a>
+      <a href="/logout" class="logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg> Logout</a>
+    </nav>
+  </div>
+  <div class="main-content">
+    <h2 style="margin:0 0 1rem 0;">Backup & Restore — Database</h2>
+    <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+
+    <div class="card">
+      <h3 style="margin:0 0 0.75rem 0; font-size:1.1rem;">Download Backup</h3>
+      <p class="hint">Download a complete snapshot of the database (users, questions, exams, scores, subjects).</p>
+      <p class="hint" style="margin:0.5rem 0 1rem 0;">Tip: The deployment already persists data on a Railway Volume, but downloading a regular backup adds a manual safety net you can keep on your own computer.</p>
+      <a href="/admin/backup/download" class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Download backup (.db)</a>
+    </div>
+
+    <div class="card danger-zone">
+      <h3 style="margin:0 0 0.75rem 0; font-size:1.1rem; color:var(--danger);">Restore From Backup</h3>
+      <p class="hint" style="margin:0 0 1rem 0;"><b>Warning:</b> Restoring replaces the current database with the uploaded backup. A safety copy of the current database is saved before restoring.</p>
+      <form action="/admin/backup/restore" method="post" enctype="multipart/form-data" onsubmit="return confirm('Restore the database from this backup? This will REPLACE current data.');">
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label style="display:block; margin-bottom:0.4rem; font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Backup file (.db)</label>
+          <input type="file" name="db" accept=".db,.sqlite" required style="padding:0.5rem; border:1.5px solid var(--border); border-radius:8px; background:#fff; width:100%;">
+        </div>
+        <button type="submit" class="btn btn-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:-2px;margin-right:4px;"><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"></path><polyline points="16 13 12 17 8 13"></polyline><line x1="12" y1="9" x2="12" y2="17"></line></svg>Restore from uploaded backup</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 0.75rem 0; font-size:1.1rem;">How It Works</h3>
+      <div class="step"><b>1.</b> Click "Download backup" to save a copy of your data as a <code>.db</code> file.</div>
+      <div class="step"><b>2.</b> To restore, upload that file above — the current database is replaced with the backup's contents.</div>
+      <div class="step"><b>3.</b> A safety snapshot of the database is taken automatically before any restore and on every server start, so you always have a fallback.</div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script>
+    uiShowUrlAlerts();
+  </script>
+</body>
+</html>

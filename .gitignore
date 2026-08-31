@@ -23,5 +23,8 @@ output.txt
 deepseek_questions.csv
 take_exam_backup.ejs
 
+# Runtime database backups (auto-backup on start + pre-restore safety copies)
+backups/
+
 # Unused HTML/backup view copies
 views/*.ejs.new
