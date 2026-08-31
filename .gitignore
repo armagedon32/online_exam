@@ -24,5 +24,4 @@ deepseek_questions.csv
 take_exam_backup.ejs
 
 # Unused HTML/backup view copies
-views/*.html
 views/*.ejs.new
