@@ -125,6 +125,19 @@ db.serialize(() => {
     db.run("ALTER TABLE exams ADD COLUMN created_by INTEGER", () => {});
   });
 
+// Bootstrap default admin on a fresh/empty database
+db.serialize(() => {
+  db.get("SELECT COUNT(*) AS c FROM users WHERE role='admin'", [], (err, row) => {
+    if (!err && row && row.c === 0) {
+      db.run("INSERT INTO users (username, password, full_name, role, is_super) VALUES (?, ?, ?, 'admin', 1)",
+        ['admin', 'admin123', 'System Administrator'], function(err2) {
+          if (err2) console.error('Admin bootstrap error:', err2);
+          else console.log('Created default admin account (admin/admin123)');
+        });
+    }
+  });
+});
+
 // Seed/backfill multi-admin columns (idempotent)
 db.serialize(() => {
   // Make account id=1 the super admin
