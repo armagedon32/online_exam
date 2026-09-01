@@ -267,31 +267,41 @@ app.post('/signup', (req, res) => {
   if (!username || !password || !full_name || !course || !year_level || !set_group) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('All fields required'));
   if (!selectedSubjects.length) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Select at least one subject'));
   const subjectsJson = JSON.stringify(selectedSubjects);
-  // Determine referring admin from token
-  const confirmSignup = (referrerId) => {
-    db.run('INSERT INTO users (username, password, full_name, course, year_level, set_group, subjects, role, referrer_id) VALUES (?, ?, ?, ?, ?, ?, ?, "student", ?)', [username, password, full_name.trim(), course.trim(), year_level, set_group, subjectsJson, referrerId], function(err) {
-      if (err) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Username already exists'));
-      req.session.userId = this.lastID;
-      req.session.username = username;
-      req.session.full_name = full_name.trim();
-      req.session.set_group = set_group;
-      req.session.role = 'student';
-      req.session.subjects = selectedSubjects;
-      req.session.theme = 'system';
-      req.session.referrer_id = referrerId;
-      res.cookie('theme', 'system', { maxAge: 31536000000, path: '/' });
-      req.session.save(() => res.redirect('/'));
-    });
-  };
-  if (ref) {
-    findByToken(ref, (err, admin) => {
-      if (err || !admin || admin.role !== 'admin') return res.redirect('/signup?ref=' + ref + '&error=' + encodeURIComponent('Invalid signup link'));
-      confirmSignup(admin.id);
-    });
-  } else {
-    // No token -> register under the super admin (main admin)
-    confirmSignup(1);
-  }
+  const trimmedFullName = full_name.trim();
+
+  // Case-insensitive duplicate check on full_name
+  db.get('SELECT id, full_name, created_at FROM users WHERE LOWER(full_name) = LOWER(?)', [trimmedFullName], (err, existing) => {
+    if (err) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Database error'));
+    if (existing) {
+      return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Name already registered: ' + existing.full_name));
+    }
+
+    // Determine referring admin from token
+    const confirmSignup = (referrerId) => {
+      db.run('INSERT INTO users (username, password, full_name, course, year_level, set_group, subjects, role, referrer_id) VALUES (?, ?, ?, ?, ?, ?, ?, "student", ?)', [username, password, trimmedFullName, course.trim(), year_level, set_group, subjectsJson, referrerId], function(err) {
+        if (err) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Username already exists'));
+        req.session.userId = this.lastID;
+        req.session.username = username;
+        req.session.full_name = trimmedFullName;
+        req.session.set_group = set_group;
+        req.session.role = 'student';
+        req.session.subjects = selectedSubjects;
+        req.session.theme = 'system';
+        req.session.referrer_id = referrerId;
+        res.cookie('theme', 'system', { maxAge: 31536000000, path: '/' });
+        req.session.save(() => res.redirect('/'));
+      });
+    };
+    if (ref) {
+      findByToken(ref, (err, admin) => {
+        if (err || !admin || admin.role !== 'admin') return res.redirect('/signup?ref=' + ref + '&error=' + encodeURIComponent('Invalid signup link'));
+        confirmSignup(admin.id);
+      });
+    } else {
+      // No token -> register under the super admin (main admin)
+      confirmSignup(1);
+    }
+  });
 });
 
 app.get('/logout', (req, res) => {
@@ -844,6 +854,27 @@ app.post('/admin/users/unlock', isLoggedIn, isAdmin, (req, res) => {
   db.run('UPDATE users SET is_locked=0, failed_attempts=0 WHERE id=?', [id], (err) => {
     if (err) return res.redirect('/admin/users?error=' + encodeURIComponent('Unlock failed'));
     res.redirect('/admin/users?success=' + encodeURIComponent('Account unlocked — user can login again'));
+  });
+});
+
+// Cleanup duplicate full_name entries (keep oldest, delete newer) — super admin only
+app.post('/admin/users/cleanup-duplicates', isLoggedIn, isAdmin, (req, res) => {
+  if (!isSuperAdmin(req)) return res.redirect('/admin/users?error=' + encodeURIComponent('Super admin only'));
+  db.all('SELECT LOWER(full_name) as lname, COUNT(*) as cnt FROM users WHERE role="student" GROUP BY LOWER(full_name) HAVING cnt > 1', [], (err, dupes) => {
+    if (err) return res.redirect('/admin/users?error=' + encodeURIComponent('Database error'));
+    let deleted = 0;
+    dupes.forEach((d) => {
+      db.all('SELECT id FROM users WHERE LOWER(full_name) = ? AND role="student" ORDER BY created_at ASC', [d.lname], (err2, rows) => {
+        if (err2) return;
+        // Keep first (oldest), delete rest
+        rows.slice(1).forEach((r) => {
+          db.run('DELETE FROM users WHERE id=?', [r.id], () => { deleted++; });
+        });
+      });
+    });
+    setTimeout(() => {
+      res.redirect('/admin/users?success=' + encodeURIComponent('Cleaned up ' + deleted + ' duplicate student accounts (kept oldest for each name)'));
+    }, 500);
   });
 });
 
