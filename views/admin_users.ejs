@@ -52,7 +52,8 @@
     <div class="card" style="margin-bottom: var(--space-6);">
       <div class="card-header"><h3>Administrator Accounts</h3><span class="meta">Main admin only</span></div>
       <div class="card-body">
-        <form action="/admin/users/create-admin" method="post" style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:flex-end; margin-bottom:var(--space-4);">
+        <div style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center; margin-bottom:var(--space-4); justify-content:space-between;">
+          <form action="/admin/users/create-admin" method="post" style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:flex-end;">
           <div class="form-group" style="margin:0;">
             <label>Full Name</label>
             <input type="text" name="full_name" placeholder="e.g., Prof. Juan Dela Cruz">
@@ -163,8 +164,11 @@
                     <form action="/admin/users/delete" method="post" class="d-inline" data-message="Delete <%= u.username %>?<br><small>Their account and all exam records will be permanently removed.</small>" data-confirm-text="Delete" data-danger="true">
                       <input type="hidden" name="id" value="<%= u.id %>">
                       <button class="btn btn-danger btn-sm" type="submit">Delete</button>
-                    </form>
-                  </div>
+</form>
+          <form action="/admin/users/cleanup-duplicates" method="post" class="d-inline" onsubmit="return confirm('This will delete duplicate student accounts (keeping the oldest for each name). Continue?');">
+            <button type="submit" class="btn btn-warning" style="padding:0.6rem 1rem;">Cleanup Duplicates</button>
+          </form>
+        </div>
                 </td>
               </tr>
               <!-- View Modal Data -->
