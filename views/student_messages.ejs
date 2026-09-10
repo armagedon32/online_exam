@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages — Student Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+    <div class="nav-left">
+      <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <path d="M12 11h.01"></path>
+          <path d="M14 8h.01"></path>
+        </svg>
+      </div>
+      <span class="brand">Online Exam</span>
+      <a href="/student" class="nav-link">Dashboard</a>
+      <a href="/student/lessons" class="nav-link">Lessons</a>
+      <a href="/student/assignments" class="nav-link">Assignments</a>
+      <a href="/change-password" class="nav-link">Change Password</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar"><%= (user.full_name || user.username || '?').charAt(0).toUpperCase() %></div>
+      <span><%= user.full_name || user.username %> · <%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %></span>
+      <a href="/logout" class="nav-logout" data-ui-confirm="Log out of your account?" data-confirm-text="Logout" data-danger="true">Logout</a>
+    </div>
+  </nav>
+
+  <div class="dashboard-container" style="max-width: 860px; margin: var(--space-8) auto; padding: 0 var(--space-6);">
+    <header class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+      <div>
+        <h1>Messages 💬</h1>
+        <p>Private chat with <strong><%= adminName %></strong> — for exam questions, clarifications, or anything you need.</p>
+      </div>
+      <a href="/student" class="btn btn-secondary" style="padding:0.6rem 1rem; text-decoration:none;">← Back to Dashboard</a>
+    </header>
+
+    <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="padding: var(--space-4) var(--space-5); border-bottom:1px solid var(--border-light); background:var(--bg-tertiary);">
+        <strong style="font-size:var(--text-sm);">Conversation with <%= adminName %></strong>
+        <span class="meta" style="display:block; margin-top:var(--space-1);">
+          <%= messages.length === 0 ? 'No messages yet — say hi!' : messages.length + ' message(s)' %>
+        </span>
+      </div>
+      <div style="padding: var(--space-4); max-height: 420px; overflow-y: auto; display:flex; flex-direction:column; gap:var(--space-3); background:var(--bg-secondary);">
+        <% if (messages.length === 0) { %>
+          <div class="empty-state" style="padding: var(--space-8) var(--space-4);">
+            <h3>Start a conversation</h3>
+            <p>Type a question for your teacher below. You'll get a notification when they reply.</p>
+          </div>
+        <% } else { %>
+          <% messages.forEach(m => {
+               const mine = m.sender_id === user.userId;
+          %>
+            <div style="align-self: <%= mine ? 'flex-end' : 'flex-start' %>; max-width: 78%;">
+              <div style="background:<%= mine ? 'var(--color-primary)' : '#fff' %>; color:<%= mine ? '#fff' : 'var(--text-primary)' %>; padding: var(--space-3) var(--space-4); border-radius: <%= mine ? 'var(--radius-md) var(--radius-md) var(--radius-sm) var(--radius-md)' : 'var(--radius-md) var(--radius-md) var(--radius-md) var(--radius-sm)' %>; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+                <div style="font-size:var(--text-xs); font-weight:600; opacity:0.8; margin-bottom:var(--space-1);"><%= mine ? 'You' : adminName %></div>
+                <div style="white-space:pre-wrap; word-break:break-word; font-size:var(--text-sm);"><%= m.message %></div>
+                <div style="font-size:var(--text-xs); opacity:0.7; margin-top:var(--space-1); text-align:right;"><%= m.created_at %></div>
+              </div>
+            </div>
+          <% }) %>
+        <% } %>
+      </div>
+      <form action="/student/messages/send" method="post" style="padding: var(--space-4); border-top:1px solid var(--border-light); background:var(--bg-tertiary);">
+        <div class="form-group" style="margin-bottom:var(--space-3);">
+          <textarea name="message" rows="3" placeholder="Type a message for <%= adminName %>..." required style="resize:vertical;"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Send Message</button>
+      </form>
+    </div>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script src="/notifications.js"></script>
+  <script>
+    uiShowUrlAlerts();
+    var chat = document.querySelector('div[style*="max-height: 420px"]');
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  </script>
+</body>
+</html>

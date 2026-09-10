@@ -165,6 +165,43 @@ db.serialize(() => {
   db.run("ALTER TABLE submissions ADD COLUMN score TEXT", () => {});
   db.run("ALTER TABLE submissions ADD COLUMN feedback TEXT", () => {});
 
+  // notifications table (bell) — created if not exists
+  db.run(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      type TEXT,
+      title TEXT,
+      body TEXT,
+      link TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  // messages table (student <=> admin private messaging)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_id INTEGER,
+      recipient_id INTEGER,
+      message TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+// ---------- Notification helpers ----------
+function notifyUser(userId, type, title, body, link) {
+  if (!userId) return;
+  db.run('INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)',
+    [userId, type, title, body, link || null]);
+}
+function notifyAdminStudents(adminId, type, title, body, link) {
+  db.all("SELECT id FROM users WHERE role='student' AND referrer_id = ?", [adminId], (err, students) => {
+    (students || []).forEach((st) => notifyUser(st.id, type, title, body, link));
+  });
+}
+
 // Bootstrap default admin on a fresh/empty database
 db.serialize(() => {
   db.get("SELECT COUNT(*) AS c FROM users WHERE role='admin'", [], (err, row) => {
@@ -972,6 +1009,7 @@ app.post('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
       [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, req.session.userId],
       function(err) {
         if (err) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Failed to create assignment'));
+        notifyAdminStudents(req.session.userId, 'assignment', 'New Assignment', title.trim(), '/student/assignments/' + this.lastID);
         res.redirect('/admin/assignments?success=' + encodeURIComponent('Assignment "' + title.trim() + '" created'));
       });
   }
@@ -1163,6 +1201,7 @@ app.post('/admin/lessons/create', isLoggedIn, isAdmin, uploadAssignment.single('
       [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, (date || '').trim() || null, fileName, fileData, link, req.session.userId],
       function(err) {
         if (err) return res.redirect('/admin/lessons/create?error=' + encodeURIComponent('Failed to create lesson'));
+        notifyAdminStudents(req.session.userId, 'lesson', 'New Lesson', title.trim(), '/student/lessons');
         res.redirect('/admin/lessons?success=' + encodeURIComponent('Lesson "' + title.trim() + '" posted'));
       });
   }
@@ -1332,6 +1371,90 @@ app.post('/admin/backup/restore', isLoggedIn, isAdmin, upload.single('db'), (req
 
 // Get LAN IP for the startup banner
 const os = require('os');
+
+// ---------- Notifications API (bell) ----------
+app.get('/api/notifications', isLoggedIn, (req, res) => {
+  db.all('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30', [req.session.userId], (err, items) => {
+    if (err) return res.json({ unread: 0, items: [] });
+    const unread = (items || []).filter((n) => !n.is_read).length;
+    res.json({ unread, items: items || [] });
+  });
+});
+app.post('/api/notifications/read', isLoggedIn, (req, res) => {
+  db.run('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [req.session.userId], () => {
+    res.json({ ok: true });
+  });
+});
+
+// ---------- Student -> Admin private messages ----------
+app.get('/student/messages', isLoggedIn, (req, res) => {
+  db.get('SELECT referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    const adminId = (u && u.referrer_id) ? u.referrer_id : null;
+    if (!adminId) return res.render('student_messages', { messages: [], adminName: 'Teacher', user: req.session });
+    db.get('SELECT full_name FROM users WHERE id = ?', [adminId], (err2, adminRow) => {
+      db.all('SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at ASC, id ASC',
+        [req.session.userId, adminId, adminId, req.session.userId], (err3, msgs) => {
+          db.run('UPDATE messages SET is_read = 1 WHERE recipient_id = ? AND sender_id = ?', [req.session.userId, adminId]);
+          res.render('student_messages', { messages: msgs || [], adminName: (adminRow && adminRow.full_name) || 'Teacher', user: req.session });
+        });
+    });
+  });
+});
+
+app.post('/student/messages/send', isLoggedIn, (req, res) => {
+  const text = (req.body.message || '').trim();
+  if (!text) return res.redirect('/student/messages?error=' + encodeURIComponent('Type a message first'));
+  db.get('SELECT referrer_id, full_name FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    const adminId = (u && u.referrer_id) ? u.referrer_id : null;
+    if (!adminId) return res.redirect('/student/messages?error=' + encodeURIComponent('No teacher assigned yet'));
+    db.run('INSERT INTO messages (sender_id, recipient_id, message) VALUES (?, ?, ?)', [req.session.userId, adminId, text], (err2) => {
+      if (err2) return res.redirect('/student/messages?error=' + encodeURIComponent('Failed to send message'));
+      notifyUser(adminId, 'message', 'Message from ' + (u ? (u.full_name || 'student') : 'student'), text, '/admin/messages');
+      res.redirect('/student/messages?success=' + encodeURIComponent('Message sent to your teacher'));
+    });
+  });
+});
+
+// ---------- Admin: view conversations + reply ----------
+app.get('/admin/messages', isLoggedIn, isAdmin, (req, res) => {
+  const sc = scopeClause(req, 'referrer_id', 'u');
+  db.all('SELECT u.id AS student_id, u.full_name, u.username, u.set_group, ' +
+    '(SELECT COUNT(*) FROM messages m WHERE m.recipient_id = ? AND m.sender_id = u.id AND m.is_read = 0) AS unread, ' +
+    '(SELECT MAX(created_at) FROM messages WHERE (sender_id = u.id AND recipient_id = ?) OR (sender_id = ? AND recipient_id = u.id)) AS last_time ' +
+    'FROM users u WHERE u.role = ? ' + sc.sql +
+    ' ORDER BY (last_time IS NULL), last_time DESC',
+    [req.session.userId, req.session.userId, req.session.userId, 'student'].concat(sc.params), (err, convos) => {
+      if (err) return res.status(500).send('Database error');
+      res.render('admin_messages', { conversations: convos || [], user: req.session });
+    });
+});
+
+app.get('/admin/messages/:studentId', isLoggedIn, isAdmin, (req, res) => {
+  const studentId = parseInt(req.params.studentId, 10);
+  if (!studentId) return res.redirect('/admin/messages');
+  const sc = scopeClause(req, 'referrer_id', 'u');
+  db.get('SELECT u.id, u.full_name, u.username FROM users u WHERE u.id = ? AND u.role = ?' + sc.sql, [studentId, 'student'].concat(sc.params), (err, student) => {
+    if (err || !student) return res.redirect('/admin/messages?error=' + encodeURIComponent('Student not found'));
+    db.all('SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at ASC, id ASC',
+      [req.session.userId, studentId, studentId, req.session.userId], (err2, msgs) => {
+        db.run('UPDATE messages SET is_read = 1 WHERE recipient_id = ? AND sender_id = ?', [req.session.userId, studentId]);
+        res.render('admin_message_view', { student, messages: msgs || [], user: req.session });
+      });
+  });
+});
+
+app.post('/admin/messages/reply', isLoggedIn, isAdmin, (req, res) => {
+  const studentId = parseInt(req.body.student_id, 10);
+  const text = (req.body.message || '').trim();
+  if (!studentId || !text) return res.redirect('/admin/messages?error=' + encodeURIComponent('Missing student or reply text'));
+  db.run('INSERT INTO messages (sender_id, recipient_id, message) VALUES (?, ?, ?)', [req.session.userId, studentId, text], (err) => {
+    if (err) return res.redirect('/admin/messages?error=' + encodeURIComponent('Failed to send reply'));
+    db.get('SELECT full_name FROM users WHERE id = ?', [studentId], (err2, st) => {
+      notifyUser(studentId, 'message', 'Reply from ' + (req.session.full_name || 'your teacher'), text, '/student/messages');
+      res.redirect('/admin/messages/' + studentId + '?success=' + encodeURIComponent('Reply sent to ' + (st ? st.full_name : 'student')));
+    });
+  });
+});
 
 // ===== START SERVER =====
 function getLanAddress() {
