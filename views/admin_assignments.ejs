@@ -72,7 +72,12 @@
               <% assignments.forEach(a => { %>
                 <tr>
                   <td class="cell-muted"><%= a.id %></td>
-                  <td class="cell-primary"><%= a.title %></td>
+                  <td class="cell-primary">
+                    <%= a.title %>
+                    <% if (a.file_name) { %>
+                      <a href="/admin/assignments/<%= a.id %>/file" class="badge badge-view" style="text-decoration:none; margin-left: var(--space-2);" download="<%= a.file_name %>">📎 <%= a.file_name %></a>
+                    <% } %>
+                  </td>
                   <td><% if (a.subject) { %><span class="badge badge-primary"><%= a.subject %></span><% } else { %><span class="cell-muted">—</span><% } %></td>
                   <td><% if (a.due_date) { %><span class="badge badge-warning"><%= a.due_date %></span><% } else { %><span class="cell-muted">No due date</span><% } %></td>
                   <td><span class="badge badge-set"><%= a.submission_count %></span></td>

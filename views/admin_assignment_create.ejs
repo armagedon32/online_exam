@@ -41,7 +41,7 @@
     <div class="card">
       <div class="card-header"><h3>Assignment Details</h3></div>
       <div class="card-body">
-        <form action="/admin/assignments/create" method="post">
+        <form action="/admin/assignments/create" method="post" enctype="multipart/form-data">
           <div class="form-group">
             <label>Title *</label>
             <input type="text" name="title" placeholder="e.g., Chapter 1 Report, Lab Exercise #2" required>
@@ -56,6 +56,11 @@
               <option value="">— All Subjects —</option>
               <% subjects.forEach(s => { %><option value="<%= s.name %>"><%= s.name %></option><% }) %>
             </select>
+          </div>
+          <div class="form-group">
+            <label>Attachment File (optional)</label>
+            <input type="file" name="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.zip,.mp4,.mp3">
+            <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">Upload a worksheet, PDF, or any file — students can download it.</p>
           </div>
           <div class="form-group">
             <label>Due Date</label>

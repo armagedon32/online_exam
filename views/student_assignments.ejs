@@ -74,6 +74,7 @@
                 <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
                   <% if (a.subject) { %><span class="badge badge-primary"><%= a.subject %></span><% } %>
                   <% if (a.due_date) { %><span class="badge badge-warning">Due <%= a.due_date %></span><% } %>
+                  <% if (a.file_name) { %><a href="/student/assignments/<%= a.id %>/file" class="badge badge-view" style="text-decoration:none;" download="<%= a.file_name %>">📎 File</a><% } %>
                 </p>
                 <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light); font-size: var(--text-xs); color: var(--text-muted);">
                   <span>Submitted <%= new Date(sub.submitted_at).toLocaleDateString() %></span>
@@ -93,6 +94,7 @@
                 <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
                   <% if (a.subject) { %><span class="badge badge-primary"><%= a.subject %></span><% } %>
                   <% if (a.due_date) { %><span class="badge badge-warning">Due <%= a.due_date %></span><% } %>
+                  <% if (a.file_name) { %><a href="/student/assignments/<%= a.id %>/file" class="badge badge-view" style="text-decoration:none;" download="<%= a.file_name %>">📎 File</a><% } %>
                 </p>
                 <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
                   <span style="font-size: var(--text-sm); color: var(--text-muted);">Not yet submitted</span>

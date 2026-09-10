@@ -60,6 +60,9 @@
         <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
           <% if (assignment.subject) { %><span class="badge badge-primary"><%= assignment.subject %></span><% } %>
           <% if (assignment.due_date) { %><span class="badge badge-warning">Due: <%= assignment.due_date %></span><% } %>
+          <% if (assignment.file_name) { %>
+            <a href="/student/assignments/<%= assignment.id %>/file" class="btn btn-view btn-sm" style="text-decoration:none; padding:var(--space-2) var(--space-4);" download="<%= assignment.file_name %>">📎 <%= assignment.file_name %></a>
+          <% } %>
         </p>
         <% if (assignment.description) { %>
           <div style="margin-top: var(--space-4); padding: var(--space-4); background: var(--bg-secondary); border-radius: var(--radius-md);">

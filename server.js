@@ -133,6 +133,8 @@ db.serialize(() => {
       description TEXT,
       subject TEXT,
       due_date TEXT,
+      file_name TEXT,
+      file_data BLOB,
       created_by INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -164,6 +166,9 @@ db.serialize(() => {
   // migration: add grading columns to submissions
   db.run("ALTER TABLE submissions ADD COLUMN score TEXT", () => {});
   db.run("ALTER TABLE submissions ADD COLUMN feedback TEXT", () => {});
+  // migration: add downloadable file to assignments
+  db.run("ALTER TABLE assignments ADD COLUMN file_name TEXT", () => {});
+  db.run("ALTER TABLE assignments ADD COLUMN file_data BLOB", () => {});
 
   // notifications table (bell) — created if not exists
   db.run(`
@@ -992,7 +997,7 @@ app.get('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // --- Admin: Create assignment POST ---
-app.post('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
+app.post('/admin/assignments/create', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
   const { title, description, subject, due_date } = req.body;
   if (!title || !title.trim()) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Title is required'));
   const subjScope = scopeClause(req, 'created_by');
@@ -1005,8 +1010,10 @@ app.post('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
     doCreate();
   }
   function doCreate() {
-    db.run('INSERT INTO assignments (title, description, subject, due_date, created_by) VALUES (?, ?, ?, ?, ?)',
-      [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, req.session.userId],
+    const fileName = req.file ? req.file.originalname : null;
+    const fileData = req.file ? req.file.buffer : null;
+    db.run('INSERT INTO assignments (title, description, subject, due_date, file_name, file_data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, fileName, fileData, req.session.userId],
       function(err) {
         if (err) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Failed to create assignment'));
         notifyAdminStudents(req.session.userId, 'assignment', 'New Assignment', title.trim(), '/student/assignments/' + this.lastID);
@@ -1057,6 +1064,18 @@ app.get('/admin/assignments/submission/:id/file', isLoggedIn, isAdmin, (req, res
   db.get('SELECT s.file_name, s.file_data FROM submissions s WHERE s.id = ?', [sId], (err, row) => {
     if (err || !row || !row.file_data) return res.status(404).send('File not found');
     res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(row.file_name || 'submission') + '"');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(Buffer.from(row.file_data));
+  });
+});
+
+// --- Admin: Download the assignment file (worksheet/instructions) ---
+app.get('/admin/assignments/:id/file', isLoggedIn, isAdmin, (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  const sc = scopeClause(req, 'created_by', 'a');
+  db.get('SELECT a.file_name, a.file_data FROM assignments a WHERE a.id = ?' + sc.sql, [aId].concat(sc.params), (err, row) => {
+    if (err || !row || !row.file_data) return res.status(404).send('File not found');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(row.file_name || 'assignment') + '"');
     res.setHeader('Content-Type', 'application/octet-stream');
     res.send(Buffer.from(row.file_data));
   });
@@ -1116,6 +1135,26 @@ app.get('/student/assignments/:id', isLoggedIn, (req, res) => {
       db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err3, mySub) => {
         res.render('student_assignment_view', { assignment, mySub: mySub || null, user: req.session });
       });
+    });
+  });
+});
+
+// --- Student: Download the assignment file ---
+app.get('/student/assignments/:id/file', isLoggedIn, (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  if (!aId) return res.redirect('/student/assignments');
+  db.get('SELECT file_name, file_data, created_by, subject FROM assignments WHERE id = ?', [aId], (err, row) => {
+    if (err || !row) return res.status(404).send('Assignment not found');
+    db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      let mySubjects = [];
+      try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
+      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      if (row.created_by && row.created_by !== ownerId) return res.status(403).send('Access denied');
+      if (mySubjects.length && row.subject && !mySubjects.includes(row.subject)) return res.status(403).send('Access denied');
+      if (!row.file_data) return res.status(404).send('No file uploaded for this assignment');
+      res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(row.file_name || 'assignment') + '"');
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.send(Buffer.from(row.file_data));
     });
   });
 });
