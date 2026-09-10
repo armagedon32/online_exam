@@ -1598,7 +1598,7 @@ app.listen(PORT, () => {
   const lan = getLanAddress();
   const line = '─'.repeat(58);
   console.log('\n' + line);
-  console.log('  🎓  ONLINE EXAM SYSTEM — SERVER ONLINE');
+  console.log('  🎓  STUDENT PORTAL — SERVER ONLINE');
   console.log(line);
   console.log('  ✓ Status      : Running');
   console.log('  ✓ Local URL   : http://localhost:' + PORT);
