@@ -47,6 +47,21 @@
     <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
     <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
 
+    <% if (subjects.length > 1) { %>
+      <form action="/student/assignments" method="get" class="card" style="padding: var(--space-4); margin-bottom: var(--space-5); display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;">
+        <label for="subjectFilter" style="margin:0; font-size:var(--text-sm); text-transform:none; letter-spacing:0; color:var(--text-muted);">Filter by Subject:</label>
+        <select name="subject" id="subjectFilter" onchange="this.form.submit()" style="flex:1; min-width:200px; max-width:320px;">
+          <option value="">All Subjects</option>
+          <% subjects.forEach(s => { %>
+            <option value="<%= s %>" <%= selected === s ? 'selected' : '' %>><%= s %></option>
+          <% }) %>
+        </select>
+        <% if (selected) { %>
+          <a href="/student/assignments" class="btn btn-secondary btn-sm" style="text-decoration:none;">Clear</a>
+        <% } %>
+      </form>
+    <% } %>
+
     <% if (assignments.length === 0) { %>
       <div class="card">
         <div class="card-body" style="padding: var(--space-12) var(--space-6);">

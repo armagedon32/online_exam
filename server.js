@@ -1177,8 +1177,13 @@ app.get('/student/assignments', isLoggedIn, (req, res) => {
         mySubs.forEach(s => { subMap[s.assignment_id] = s; });
         let filtered = assignments;
         if (mySubjects.length) filtered = assignments.filter(a => !a.subject || mySubjects.includes(a.subject));
+        const subjectSet = {};
+        filtered.forEach(a => { if (a.subject) subjectSet[a.subject] = a.subject; });
+        const subjects = Object.keys(subjectSet).sort();
+        const sel = req.query.subject || '';
+        if (sel) filtered = filtered.filter(a => a.subject === sel);
         filtered.forEach(a => { a.closed = isPastDue(a.due_date); });
-        res.render('student_assignments', { assignments: filtered, subMap, user: req.session, mySubjects });
+        res.render('student_assignments', { assignments: filtered, subMap, user: req.session, mySubjects, subjects, selected: sel });
       });
     });
   });
@@ -1361,13 +1366,18 @@ app.get('/student/lessons', isLoggedIn, (req, res) => {
       if (err2) return res.status(500).send('Database error');
       let filtered = lessons;
       if (mySubjects.length) filtered = lessons.filter(l => !l.subject || mySubjects.includes(l.subject));
+      const subjectSet = {};
+      filtered.forEach(l => { if (l.subject) subjectSet[l.subject] = l.subject; });
+      const subjects = Object.keys(subjectSet).sort();
+      const sel = req.query.subject || '';
+      if (sel) filtered = filtered.filter(l => l.subject === sel);
       const byDate = {};
       filtered.forEach(l => {
         const key = l.date || 'No Date';
         if (!byDate[key]) byDate[key] = [];
         byDate[key].push(l);
       });
-      res.render('student_lessons', { byDate, lessonCount: filtered.length, user: req.session, mySubjects });
+      res.render('student_lessons', { byDate, lessonCount: filtered.length, user: req.session, mySubjects, subjects, selected: sel });
     });
   });
 });
