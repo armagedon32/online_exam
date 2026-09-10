@@ -1036,6 +1036,59 @@ app.post('/admin/assignments/create', isLoggedIn, isAdmin, uploadAssignment.sing
   }
 });
 
+// --- Admin: Edit assignment GET (pre-filled form) ---
+app.get('/admin/assignments/:id/edit', isLoggedIn, isAdmin, (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  if (!aId) return res.redirect('/admin/assignments');
+  const sc = scopeClause(req, 'created_by', 'a');
+  db.get('SELECT a.* FROM assignments a WHERE a.id = ?' + sc.sql, [aId].concat(sc.params), (err, assignment) => {
+    if (err || !assignment) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Assignment not found'));
+    getAdminSubjects(req, (errS, subjects) => {
+      if (errS) subjects = [];
+      res.render('admin_assignment_edit', { assignment, subjects: subjects || [], user: req.session });
+    });
+  });
+});
+
+// --- Admin: Edit assignment POST (update details + requirements, optional new file) ---
+app.post('/admin/assignments/:id/edit', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  if (!aId) return res.redirect('/admin/assignments');
+  const { title, description, subject, due_date } = req.body;
+  const requireAnswer = req.body.require_answer === '1' ? 1 : 0;
+  const requireVideo = req.body.require_video === '1' ? 1 : 0;
+  const requireFile = req.body.require_file === '1' ? 1 : 0;
+  if (!title || !title.trim()) return res.redirect('/admin/assignments/' + aId + '/edit?error=' + encodeURIComponent('Title is required'));
+  const sc = scopeClause(req, 'created_by', 'a');
+  db.get('SELECT a.id FROM assignments a WHERE a.id = ?' + sc.sql, [aId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Assignment not found'));
+    const subjScope = scopeClause(req, 'created_by');
+    const checkSubj = (cb) => {
+      if (subject) {
+        db.get('SELECT COUNT(*) as cnt FROM subjects WHERE name = ?' + subjScope.sql, [subject].concat(subjScope.params), (errS, sRow) => {
+          if (errS || !sRow || sRow.cnt === 0) return res.redirect('/admin/assignments/' + aId + '/edit?error=' + encodeURIComponent('Invalid subject'));
+          cb();
+        });
+      } else cb();
+    };
+    checkSubj(() => {
+      const removeFile = req.body.remove_file === '1';
+      const newFile = req.file ? { name: req.file.originalname, data: req.file.buffer } : null;
+      let sql = 'UPDATE assignments SET title = ?, description = ?, subject = ?, due_date = ?, require_answer = ?, require_video = ?, require_file = ?';
+      let params = [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, requireAnswer, requireVideo, requireFile];
+      if (newFile) { sql += ', file_name = ?, file_data = ?'; params.push(newFile.name, newFile.data); }
+      else if (removeFile) { sql += ', file_name = NULL, file_data = NULL'; }
+      sql += ' WHERE id = ?';
+      params.push(aId);
+      db.run(sql, params, (err2) => {
+        if (err2) return res.redirect('/admin/assignments/' + aId + '/edit?error=' + encodeURIComponent('Update failed'));
+        notifyAdminStudents(req.session.userId, 'assignment', 'Assignment Updated', title.trim(), '/student/assignments/' + aId);
+        res.redirect('/admin/assignments/' + aId + '?success=' + encodeURIComponent('Assignment updated successfully'));
+      });
+    });
+  });
+});
+
 // --- Admin: View submissions for an assignment ---
 app.get('/admin/assignments/:id', isLoggedIn, isAdmin, (req, res) => {
   const aId = parseInt(req.params.id, 10);

@@ -85,6 +85,7 @@
                   <td class="text-right">
                     <div class="actions">
                       <a href="/admin/assignments/<%= a.id %>" class="btn btn-view btn-sm">View Submissions</a>
+                      <a href="/admin/assignments/<%= a.id %>/edit" class="btn btn-edit btn-sm" style="text-decoration:none;">Edit</a>
                       <form action="/admin/assignments/delete" method="post" class="d-inline" data-message="Delete assignment '<%= a.title %>'?<br><small>All submissions will also be deleted.</small>" data-confirm-text="Delete" data-danger="true">
                         <input type="hidden" name="id" value="<%= a.id %>">
                         <button class="btn btn-danger btn-sm" type="submit">Delete</button>
