@@ -31,6 +31,16 @@
     .signup-prompt a:hover { color: var(--color-primary-hover); }
     .footer { margin-top: var(--space-10); padding-top: var(--space-6); border-top: 1px solid var(--border-light); text-align: center; color: var(--text-muted); font-size: var(--text-xs); }
     .footer strong { color: var(--text-primary); }
+    .welcome-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-4); }
+    .welcome-modal { width: 100%; max-width: 400px; max-height: 92vh; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-xl); box-shadow: var(--shadow-xl); text-align: center; padding: var(--space-6); }
+    .welcome-modal img { width: 100%; max-height: 170px; object-fit: cover; border-radius: var(--radius-lg); margin-bottom: var(--space-4); display: block; }
+    .welcome-modal h2 { margin: 0 0 var(--space-2); font-size: var(--text-xl); font-weight: var(--font-extrabold); color: var(--text-primary); letter-spacing: -0.02em; }
+    .welcome-modal .welcome-tagline { color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 var(--space-4); }
+    .welcome-modal .welcome-luck { font-weight: var(--font-bold); color: var(--color-primary); margin: 0 0 var(--space-1); }
+    .welcome-modal .welcome-sign { color: var(--text-muted); font-size: var(--text-xs); margin: 0 0 var(--space-4); }
+    .welcome-modal .welcome-rules { text-align: left; margin: 0 0 var(--space-5); padding-left: var(--space-5); display: grid; gap: var(--space-2); }
+    .welcome-modal .welcome-rules li { font-size: var(--text-xs); color: var(--text-secondary); }
+    .welcome-modal .btn { width: 100%; }
   </style>
 </head>
 <body>
@@ -91,6 +101,23 @@
         &copy; 2026 Student Portal System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
         <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
       </footer>
+    </div>
+  </div>
+
+  <div class="welcome-backdrop" id="welcomeBackdrop">
+    <div class="welcome-modal" role="dialog" aria-modal="true" aria-label="Welcome to Student Portal">
+      <img src="/images/bart.png" alt="Welcome to Student Portal" onerror="this.outerHTML='<div style=\'height:170px;display:flex;align-items:center;justify-content:center;background:var(--bg-tertiary);border-radius:var(--radius-lg);margin-bottom:var(--space-4);color:var(--text-muted);font-size:var(--text-sm);\'>Student Portal</div>'">
+      <h2>Welcome to Student Portal! 🎓</h2>
+      <p class="welcome-tagline">Lessons, assignments, scores, and messages — all in one place.</p>
+      <p class="welcome-luck">Good Luck!</p>
+      <p class="welcome-sign">— Bartolome H. Javillonar Jr., DIT</p>
+      <ul class="welcome-rules">
+        <li><strong>Integrity</strong> — do your own work, no cheating or plagiarism.</li>
+        <li><strong>Honesty &amp; Respect</strong> — be truthful and courteous to everyone.</li>
+        <li><strong>Timeliness</strong> — submit on time; late work may not be accepted.</li>
+        <li><strong>Responsible Use</strong> — use this portal for learning only.</li>
+      </ul>
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('welcomeBackdrop').style.display='none'">Agree &amp; Continue →</button>
     </div>
   </div>
 
