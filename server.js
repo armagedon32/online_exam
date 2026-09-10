@@ -1329,6 +1329,57 @@ app.post('/admin/lessons/create', isLoggedIn, isAdmin, uploadAssignment.single('
   }
 });
 
+// --- Admin: Edit lesson form ---
+app.get('/admin/lessons/:id/edit', isLoggedIn, isAdmin, (req, res) => {
+  const lId = parseInt(req.params.id, 10);
+  if (!lId) return res.redirect('/admin/lessons');
+  const sc = scopeClause(req, 'created_by', 'l');
+  db.get('SELECT l.* FROM lessons l WHERE l.id = ?' + sc.sql, [lId].concat(sc.params), (err, lesson) => {
+    if (err || !lesson) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Lesson not found'));
+    getAdminSubjects(req, (errS, subjects) => {
+      if (errS) subjects = [];
+      res.render('admin_lesson_edit', { lesson, subjects: subjects || [], user: req.session });
+    });
+  });
+});
+
+// --- Admin: Edit lesson POST (update details, optional new file) ---
+app.post('/admin/lessons/:id/edit', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+  const lId = parseInt(req.params.id, 10);
+  if (!lId) return res.redirect('/admin/lessons');
+  const { title, description, subject, date, video_link } = req.body;
+  if (!title || !title.trim()) return res.redirect('/admin/lessons/' + lId + '/edit?error=' + encodeURIComponent('Title is required'));
+  const sc = scopeClause(req, 'created_by', 'l');
+  db.get('SELECT l.id FROM lessons l WHERE l.id = ?' + sc.sql, [lId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Lesson not found'));
+    const subjScope = scopeClause(req, 'created_by');
+    const checkSubj = (cb) => {
+      if (subject) {
+        db.get('SELECT COUNT(*) as cnt FROM subjects WHERE name = ?' + subjScope.sql, [subject].concat(subjScope.params), (errS, sRow) => {
+          if (errS || !sRow || sRow.cnt === 0) return res.redirect('/admin/lessons/' + lId + '/edit?error=' + encodeURIComponent('Invalid subject'));
+          cb();
+        });
+      } else cb();
+    };
+    checkSubj(() => {
+      const link = (video_link || '').trim() || null;
+      const removeFile = req.body.remove_file === '1';
+      const newFile = req.file ? { name: req.file.originalname, data: req.file.buffer } : null;
+      let sql = 'UPDATE lessons SET title = ?, description = ?, subject = ?, date = ?, video_link = ?';
+      let params = [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, date || null, link];
+      if (newFile) { sql += ', file_name = ?, file_data = ?'; params.push(newFile.name, newFile.data); }
+      else if (removeFile) { sql += ', file_name = NULL, file_data = NULL'; }
+      sql += ' WHERE id = ?';
+      params.push(lId);
+      db.run(sql, params, (err2) => {
+        if (err2) return res.redirect('/admin/lessons/' + lId + '/edit?error=' + encodeURIComponent('Update failed'));
+        notifyAdminStudents(req.session.userId, 'lesson', 'Lesson Updated', title.trim(), '/student/lessons');
+        res.redirect('/admin/lessons?success=' + encodeURIComponent('Lesson "' + title.trim() + '" updated'));
+      });
+    });
+  });
+});
+
 // --- Admin: Download lesson file ---
 app.get('/admin/lessons/:id/file', isLoggedIn, isAdmin, (req, res) => {
   const lId = parseInt(req.params.id, 10);
