@@ -148,6 +148,18 @@ db.serialize(() => {
       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(assignment_id, student_id)
     );
+    CREATE TABLE IF NOT EXISTS lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      subject TEXT,
+      date TEXT,
+      file_name TEXT,
+      file_data BLOB,
+      video_link TEXT,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
 // Bootstrap default admin on a fresh/empty database
@@ -1092,6 +1104,125 @@ app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
   db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err) => {
     if (err) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
     res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+  });
+});
+
+// ===== LESSONS (Materials / Content sharing) =====
+
+// --- Admin: List lessons (grouped by date) ---
+app.get('/admin/lessons', isLoggedIn, isAdmin, (req, res) => {
+  const sc = scopeClause(req, 'created_by');
+  db.all('SELECT * FROM lessons WHERE 1=1' + sc.sql + ' ORDER BY date DESC, created_at DESC', sc.params, (err, lessons) => {
+    if (err) return res.status(500).send('Database error');
+    // Group by date
+    const byDate = {};
+    (lessons || []).forEach(l => {
+      const key = l.date || 'No Date';
+      if (!byDate[key]) byDate[key] = [];
+      byDate[key].push(l);
+    });
+    res.render('admin_lessons', { lessons: lessons || [], byDate, user: req.session });
+  });
+});
+
+// --- Admin: Create lesson form ---
+app.get('/admin/lessons/create', isLoggedIn, isAdmin, (req, res) => {
+  getAdminSubjects(req, (err, subjects) => {
+    if (err) subjects = [];
+    res.render('admin_lesson_create', { subjects: subjects || [], user: req.session });
+  });
+});
+
+// --- Admin: Create lesson POST (with optional file upload) ---
+app.post('/admin/lessons/create', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+  const { title, description, subject, date, video_link } = req.body;
+  if (!title || !title.trim()) return res.redirect('/admin/lessons/create?error=' + encodeURIComponent('Title is required'));
+  const subjScope = scopeClause(req, 'created_by');
+  if (subject) {
+    db.get('SELECT COUNT(*) as cnt FROM subjects WHERE name = ?' + subjScope.sql, [subject].concat(subjScope.params), (errS, sRow) => {
+      if (errS || !sRow || sRow.cnt === 0) return res.redirect('/admin/lessons/create?error=' + encodeURIComponent('Invalid subject'));
+      doCreate();
+    });
+  } else {
+    doCreate();
+  }
+  function doCreate() {
+    const fileName = req.file ? req.file.originalname : null;
+    const fileData = req.file ? req.file.buffer : null;
+    const link = (video_link || '').trim() || null;
+    db.run('INSERT INTO lessons (title, description, subject, date, file_name, file_data, video_link, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, (date || '').trim() || null, fileName, fileData, link, req.session.userId],
+      function(err) {
+        if (err) return res.redirect('/admin/lessons/create?error=' + encodeURIComponent('Failed to create lesson'));
+        res.redirect('/admin/lessons?success=' + encodeURIComponent('Lesson "' + title.trim() + '" posted'));
+      });
+  }
+});
+
+// --- Admin: Download lesson file ---
+app.get('/admin/lessons/:id/file', isLoggedIn, isAdmin, (req, res) => {
+  const lId = parseInt(req.params.id, 10);
+  const sc = scopeClause(req, 'created_by', 'l');
+  db.get('SELECT l.file_name, l.file_data FROM lessons l WHERE l.id = ?' + sc.sql, [lId].concat(sc.params), (err, row) => {
+    if (err || !row || !row.file_data) return res.status(404).send('File not found');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(row.file_name || 'lesson') + '"');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(Buffer.from(row.file_data));
+  });
+});
+
+// --- Admin: Delete lesson ---
+app.post('/admin/lessons/delete', isLoggedIn, isAdmin, (req, res) => {
+  const { id } = req.body;
+  const sc = scopeClause(req, 'created_by', 'l');
+  db.get('SELECT l.id FROM lessons l WHERE l.id = ?' + sc.sql, [id].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Not found'));
+    db.run('DELETE FROM lessons WHERE id = ?', [id], (err2) => {
+      if (err2) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Delete failed'));
+      res.redirect('/admin/lessons?warning=' + encodeURIComponent('Lesson deleted'));
+    });
+  });
+});
+
+// --- Student: List lessons (grouped by date, scoped to own teacher + subjects) ---
+app.get('/student/lessons', isLoggedIn, (req, res) => {
+  db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    let mySubjects = [];
+    try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
+    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    db.all('SELECT * FROM lessons WHERE created_by = ? ORDER BY date DESC, created_at DESC', [ownerId], (err2, lessons) => {
+      if (err2) return res.status(500).send('Database error');
+      let filtered = lessons;
+      if (mySubjects.length) filtered = lessons.filter(l => !l.subject || mySubjects.includes(l.subject));
+      const byDate = {};
+      filtered.forEach(l => {
+        const key = l.date || 'No Date';
+        if (!byDate[key]) byDate[key] = [];
+        byDate[key].push(l);
+      });
+      res.render('student_lessons', { byDate, lessonCount: filtered.length, user: req.session, mySubjects });
+    });
+  });
+});
+
+// --- Student: Download lesson file (only from own teacher) ---
+app.get('/student/lessons/:id/file', isLoggedIn, (req, res) => {
+  const lId = parseInt(req.params.id, 10);
+  db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    db.get('SELECT * FROM lessons WHERE id = ? AND created_by = ?', [lId, ownerId], (err2, lesson) => {
+      if (err2 || !lesson || !lesson.file_data) return res.status(404).send('File not found');
+      db.get('SELECT subjects FROM users WHERE id = ?', [req.session.userId], (err3, u2) => {
+        let mySubjects = [];
+        try { mySubjects = u2 && u2.subjects ? JSON.parse(u2.subjects) : []; } catch(e) { mySubjects = []; }
+        if (mySubjects.length && lesson.subject && !mySubjects.includes(lesson.subject)) {
+          return res.status(403).send('This lesson does not belong to your subject');
+        }
+        res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(lesson.file_name || 'lesson') + '"');
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.send(Buffer.from(lesson.file_data));
+      });
+    });
   });
 });
 

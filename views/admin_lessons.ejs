@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Assignments — Online Exam System</title>
+  <title>Lessons — Online Exam System</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -21,8 +21,8 @@
       <a href="/admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg> Dashboard</a>
       <a href="/admin/questions/add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg> Questions</a>
       <a href="/admin/exams/create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"></polyline></svg> Create Exam</a>
-      <a href="/admin/lessons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Lessons</a>
-      <a href="/admin/assignments" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg> Assignments</a>
+      <a href="/admin/lessons" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Lessons</a>
+      <a href="/admin/assignments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg> Assignments</a>
       <a href="/admin/scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg> Scores</a>
       <a href="/admin/users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Users</a>
       <a href="/admin/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 15a1.65 1.65 0 0 0 1 1.51V17a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1-1.51z"></path></svg> Settings</a>
@@ -31,8 +31,8 @@
   </div>
   <div class="main-content">
     <div class="page-header">
-      <h1>Assignments</h1>
-      <p>Manage activities and submissions</p>
+      <h1>Lessons</h1>
+      <p>Post learning materials for your students</p>
     </div>
 
     <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
@@ -40,58 +40,75 @@
     <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
 
     <div style="margin-bottom: var(--space-4);">
-      <a href="/admin/assignments/create" class="btn btn-primary">+ Create Assignment</a>
+      <a href="/admin/lessons/create" class="btn btn-primary">+ Post Lesson</a>
     </div>
 
-    <% if (assignments.length === 0) { %>
+    <% if (lessons.length === 0) { %>
       <div class="card">
         <div class="card-body">
           <div class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-            <h3>No assignments yet</h3>
-            <p>Create your first assignment for students to submit activities.</p>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            <h3>No lessons yet</h3>
+            <p>Post your first lesson with a file, text, or video link.</p>
           </div>
         </div>
       </div>
     <% } else { %>
-      <div class="card" style="padding:0; overflow:hidden;">
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Title</th>
-                <th>Subject</th>
-                <th>Due Date</th>
-                <th>Submissions</th>
-                <th>Created</th>
-                <th class="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% assignments.forEach(a => { %>
+      <% Object.keys(byDate).forEach(dateKey => { %>
+        <div class="card" style="margin-bottom: var(--space-5); padding:0; overflow:hidden;">
+          <div class="card-header">
+            <h3>📅 <%= dateKey === 'No Date' ? 'No Date Assigned' : dateKey %></h3>
+            <span class="meta"><%= byDate[dateKey].length %> lesson(s)</span>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
                 <tr>
-                  <td class="cell-muted"><%= a.id %></td>
-                  <td class="cell-primary"><%= a.title %></td>
-                  <td><% if (a.subject) { %><span class="badge badge-primary"><%= a.subject %></span><% } else { %><span class="cell-muted">—</span><% } %></td>
-                  <td><% if (a.due_date) { %><span class="badge badge-warning"><%= a.due_date %></span><% } else { %><span class="cell-muted">No due date</span><% } %></td>
-                  <td><span class="badge badge-set"><%= a.submission_count %></span></td>
-                  <td class="cell-muted" style="font-size:var(--text-xs);"><%= a.created_at %></td>
-                  <td class="text-right">
-                    <div class="actions">
-                      <a href="/admin/assignments/<%= a.id %>" class="btn btn-view btn-sm">View Submissions</a>
-                      <form action="/admin/assignments/delete" method="post" class="d-inline" data-message="Delete assignment '<%= a.title %>'?<br><small>All submissions will also be deleted.</small>" data-confirm-text="Delete" data-danger="true">
-                        <input type="hidden" name="id" value="<%= a.id %>">
-                        <button class="btn btn-danger btn-sm" type="submit">Delete</button>
-                      </form>
-                    </div>
-                  </td>
+                  <th>#</th>
+                  <th>Title</th>
+                  <th>Subject</th>
+                  <th>Content</th>
+                  <th>File</th>
+                  <th>Video Link</th>
+                  <th>Posted</th>
+                  <th class="text-right">Actions</th>
                 </tr>
-              <% }) %>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                <% byDate[dateKey].forEach(l => { %>
+                  <tr>
+                    <td class="cell-muted"><%= l.id %></td>
+                    <td class="cell-primary"><%= l.title %></td>
+                    <td><% if (l.subject) { %><span class="badge badge-primary"><%= l.subject %></span><% } else { %><span class="cell-muted">—</span><% } %></td>
+                    <td style="max-width:220px; font-size:var(--text-sm); color:var(--text-muted);">
+                      <%= l.description ? (l.description.length > 60 ? l.description.slice(0,60) + '…' : l.description) : '—' %>
+                    </td>
+                    <td>
+                      <% if (l.file_name) { %>
+                        <a href="/admin/lessons/<%= l.id %>/file" class="btn btn-view btn-sm" download="<%= l.file_name %>">📎 <%= l.file_name %></a>
+                      <% } else { %><span class="cell-muted">—</span><% } %>
+                    </td>
+                    <td>
+                      <% if (l.video_link) { %>
+                        <a href="<%= l.video_link %>" target="_blank" rel="noopener" style="color:var(--color-primary); font-size:var(--text-sm);">🔗 Open</a>
+                      <% } else { %><span class="cell-muted">—</span><% } %>
+                    </td>
+                    <td class="cell-muted" style="font-size:var(--text-xs);"><%= l.created_at %></td>
+                    <td class="text-right">
+                      <div class="actions">
+                        <form action="/admin/lessons/delete" method="post" class="d-inline" data-message="Delete lesson '<%= l.title %>'?<br><small>This cannot be undone.</small>" data-confirm-text="Delete" data-danger="true">
+                          <input type="hidden" name="id" value="<%= l.id %>">
+                          <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      <% }) %>
     <% } %>
   </div>
 

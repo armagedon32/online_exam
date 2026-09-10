@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lessons — Student Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+    <div class="nav-left">
+      <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <path d="M12 11h.01"></path>
+          <path d="M14 8h.01"></path>
+        </svg>
+      </div>
+      <span class="brand">Online Exam</span>
+      <a href="/student" class="nav-link">Dashboard</a>
+      <a href="/student/lessons" class="nav-link active" aria-current="page">Lessons</a>
+      <a href="/student/assignments" class="nav-link">Assignments</a>
+      <a href="/change-password" class="nav-link">Change Password</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar"><%= (user.full_name || user.username || '?').charAt(0).toUpperCase() %></div>
+      <span><%= user.full_name || user.username %> · <%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %></span>
+      <a href="/logout" class="nav-logout" data-ui-confirm="Log out of your account?" data-confirm-text="Logout" data-danger="true">Logout</a>
+    </div>
+  </nav>
+
+  <div class="dashboard-container" style="max-width: var(--content-max); margin: var(--space-8) auto; padding: 0 var(--space-6);">
+    <header class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+      <div>
+        <h1>Lessons & Materials 📚</h1>
+        <p>Posted by your teacher — organized by date.</p>
+      </div>
+      <a href="/student" class="btn btn-secondary" style="padding:0.6rem 1rem; text-decoration:none;">← Back to Dashboard</a>
+    </header>
+
+    <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+
+    <% if (Object.keys(byDate).length === 0) { %>
+      <div class="card">
+        <div class="card-body" style="padding: var(--space-12) var(--space-6);">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            <h3>No lessons yet</h3>
+            <p>Your teacher hasn't posted any learning materials yet. Check back later.</p>
+          </div>
+        </div>
+      </div>
+    <% } else { %>
+      <% Object.keys(byDate).forEach(dateKey => {
+           const dateLabel = dateKey === 'No Date' ? 'Undated Materials' : dateKey;
+      %>
+        <div class="card" style="margin-bottom: var(--space-5); padding:0; overflow:hidden;">
+          <div class="card-header">
+            <h3>📅 <%= dateLabel %></h3>
+            <span class="meta"><%= byDate[dateKey].length %> lesson(s)</span>
+          </div>
+          <div class="card-body" style="padding: var(--space-3) 0;">
+            <% byDate[dateKey].forEach(l => { %>
+              <div style="padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-light);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); flex-wrap:wrap;">
+                  <div style="flex:1; min-width:240px;">
+                    <h4 style="margin:0 0 var(--space-2); font-size:var(--text-base); font-weight:var(--font-semibold); color:var(--text-primary);"><%= l.title %></h4>
+                    <% if (l.subject) { %><span class="badge badge-primary"><%= l.subject %></span><% } %>
+                    <% if (l.file_name) { %>
+                      <a href="/student/lessons/<%= l.id %>/file" class="badge badge-set" style="text-decoration:none;" download="<%= l.file_name %>">📎 <%= l.file_name %></a>
+                    <% } %>
+                  </div>
+                  <div style="display:flex; gap:var(--space-2); align-items:center;">
+                    <% if (l.video_link) { %>
+                      <a href="<%= l.video_link %>" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="padding:var(--space-2) var(--space-4); text-decoration:none;">▶ Watch Video</a>
+                    <% } %>
+                    <% if (l.file_name) { %>
+                      <a href="/student/lessons/<%= l.id %>/file" class="btn btn-view btn-sm" style="text-decoration:none;" download="<%= l.file_name %>">⬇ Download</a>
+                    <% } %>
+                  </div>
+                </div>
+                <% if (l.description) { %>
+                  <p style="margin: var(--space-2) 0 0; font-size:var(--text-sm); color:var(--text-muted); white-space:pre-wrap;"> <%= l.description %> </p>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      <% }) %>
+    <% } %>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Online Exam System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script>
+    uiShowUrlAlerts();
+  </script>
+</body>
+</html>
