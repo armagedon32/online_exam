@@ -9,6 +9,7 @@ const { parse } = require('csv-parse/sync');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const uploadAssignment = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
@@ -124,6 +125,30 @@ db.serialize(() => {
     db.run("ALTER TABLE questions ADD COLUMN created_by INTEGER", () => {});
     db.run("ALTER TABLE exams ADD COLUMN created_by INTEGER", () => {});
   });
+  // Assignments tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      subject TEXT,
+      due_date TEXT,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id INTEGER,
+      student_id INTEGER,
+      text_response TEXT,
+      file_name TEXT,
+      file_data BLOB,
+      link_url TEXT,
+      status TEXT DEFAULT 'submitted',
+      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(assignment_id, student_id)
+    );
+  `);
 
 // Bootstrap default admin on a fresh/empty database
 db.serialize(() => {
@@ -892,6 +917,181 @@ app.post('/change-password', isLoggedIn, (req, res) => {
       if (err2) return res.redirect('/change-password?error=' + encodeURIComponent('Update failed'));
       res.redirect((req.session.role === 'admin' ? '/admin' : '/student') + '?success=' + encodeURIComponent('Password changed successfully'));
     });
+  });
+});
+
+// ===== ASSIGNMENTS (Google Classroom-like) =====
+
+// --- Admin: List assignments ---
+app.get('/admin/assignments', isLoggedIn, isAdmin, (req, res) => {
+  const sc = scopeClause(req, 'created_by');
+  db.all('SELECT a.*, (SELECT COUNT(*) FROM submissions WHERE assignment_id = a.id) as submission_count FROM assignments a WHERE 1=1' + sc.sql + ' ORDER BY a.created_at DESC', sc.params, (err, assignments) => {
+    if (err) return res.status(500).send('Database error');
+    res.render('admin_assignments', { assignments: assignments || [], user: req.session });
+  });
+});
+
+// --- Admin: Create assignment form ---
+app.get('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
+  getAdminSubjects(req, (err, subjects) => {
+    if (err) subjects = [];
+    res.render('admin_assignment_create', { subjects: subjects || [], user: req.session });
+  });
+});
+
+// --- Admin: Create assignment POST ---
+app.post('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
+  const { title, description, subject, due_date } = req.body;
+  if (!title || !title.trim()) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Title is required'));
+  const subjScope = scopeClause(req, 'created_by');
+  if (subject) {
+    db.get('SELECT COUNT(*) as cnt FROM subjects WHERE name = ?' + subjScope.sql, [subject].concat(subjScope.params), (errS, sRow) => {
+      if (errS || !sRow || sRow.cnt === 0) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Invalid subject'));
+      doCreate();
+    });
+  } else {
+    doCreate();
+  }
+  function doCreate() {
+    db.run('INSERT INTO assignments (title, description, subject, due_date, created_by) VALUES (?, ?, ?, ?, ?)',
+      [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, req.session.userId],
+      function(err) {
+        if (err) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Failed to create assignment'));
+        res.redirect('/admin/assignments?success=' + encodeURIComponent('Assignment "' + title.trim() + '" created'));
+      });
+  }
+});
+
+// --- Admin: View submissions for an assignment ---
+app.get('/admin/assignments/:id', isLoggedIn, isAdmin, (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  if (!aId) return res.redirect('/admin/assignments');
+  const sc = scopeClause(req, 'created_by', 'a');
+  db.get('SELECT a.* FROM assignments a WHERE a.id = ?' + sc.sql, [aId].concat(sc.params), (err, assignment) => {
+    if (err || !assignment) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Assignment not found'));
+    db.all(`SELECT s.*, u.full_name, u.username, u.course, u.year_level, u.set_group
+            FROM submissions s JOIN users u ON s.student_id = u.id
+            WHERE s.assignment_id = ? ORDER BY s.submitted_at DESC`, [aId], (err2, subs) => {
+      if (err2) return res.status(500).send('Database error');
+      db.all(`SELECT u.id, u.full_name, u.username FROM users u
+              WHERE u.role = 'student' AND u.id NOT IN (SELECT student_id FROM submissions WHERE assignment_id = ?)
+              ORDER BY u.full_name ASC`, [aId], (err3, notSubmitted) => {
+        if (err3) notSubmitted = [];
+        res.render('admin_assignment_view', { assignment, submissions: subs || [], notSubmitted: notSubmitted || [], user: req.session });
+      });
+    });
+  });
+});
+
+// --- Admin: Mark submission as done ---
+app.post('/admin/assignments/submission/grade', isLoggedIn, isAdmin, (req, res) => {
+  const { submission_id, assignment_id } = req.body;
+  db.run('UPDATE submissions SET status = ? WHERE id = ? AND assignment_id = ?', ['done', submission_id, assignment_id], (err) => {
+    if (err) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Update failed'));
+    res.redirect('/admin/assignments/' + assignment_id + '?success=' + encodeURIComponent('Submission marked as done'));
+  });
+});
+
+// --- Admin: Download submitted file ---
+app.get('/admin/assignments/submission/:id/file', isLoggedIn, isAdmin, (req, res) => {
+  const sId = parseInt(req.params.id, 10);
+  db.get('SELECT s.file_name, s.file_data FROM submissions s WHERE s.id = ?', [sId], (err, row) => {
+    if (err || !row || !row.file_data) return res.status(404).send('File not found');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(row.file_name || 'submission') + '"');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(Buffer.from(row.file_data));
+  });
+});
+
+// --- Admin: Delete assignment ---
+app.post('/admin/assignments/delete', isLoggedIn, isAdmin, (req, res) => {
+  const { id } = req.body;
+  const sc = scopeClause(req, 'created_by', 'a');
+  db.get('SELECT a.id FROM assignments a WHERE a.id = ?' + sc.sql, [id].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Not found'));
+    db.run('DELETE FROM submissions WHERE assignment_id = ?', [id], () => {
+      db.run('DELETE FROM assignments WHERE id = ?', [id], (err2) => {
+        if (err2) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Delete failed'));
+        res.redirect('/admin/assignments?warning=' + encodeURIComponent('Assignment deleted'));
+      });
+    });
+  });
+});
+
+// --- Student: List assignments ---
+app.get('/student/assignments', isLoggedIn, (req, res) => {
+  db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    let mySubjects = [];
+    try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
+    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    db.all('SELECT * FROM assignments WHERE created_by = ? ORDER BY created_at DESC', [ownerId], (err2, assignments) => {
+      if (err2) return res.status(500).send('Database error');
+      db.all('SELECT assignment_id, status, submitted_at FROM submissions WHERE student_id = ?', [req.session.userId], (err3, mySubs) => {
+        if (err3) mySubs = [];
+        const subMap = {};
+        mySubs.forEach(s => { subMap[s.assignment_id] = s; });
+        let filtered = assignments;
+        if (mySubjects.length) filtered = assignments.filter(a => !a.subject || mySubjects.includes(a.subject));
+        res.render('student_assignments', { assignments: filtered, subMap, user: req.session, mySubjects });
+      });
+    });
+  });
+});
+
+// --- Student: View single assignment + submit ---
+app.get('/student/assignments/:id', isLoggedIn, (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  if (!aId) return res.redirect('/student/assignments');
+  db.get('SELECT * FROM assignments WHERE id = ?', [aId], (err, assignment) => {
+    if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
+    db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      let mySubjects = [];
+      try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
+      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      if (assignment.created_by && assignment.created_by !== ownerId) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif;max-width:600px;margin:4rem auto;text-align:center;"><h3>Access denied</h3><p>This assignment does not belong to your class/teacher.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
+      if (mySubjects.length && assignment.subject && !mySubjects.includes(assignment.subject)) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif;max-width:600px;margin:4rem auto;text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + assignment.subject + '</b>.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
+      db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err3, mySub) => {
+        res.render('student_assignment_view', { assignment, mySub: mySub || null, user: req.session });
+      });
+    });
+  });
+});
+
+// --- Student: Submit assignment ---
+app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single('file'), (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  const { text_response, link_url } = req.body;
+  if (!aId) return res.redirect('/student/assignments');
+  db.get('SELECT * FROM assignments WHERE id = ?', [aId], (err, assignment) => {
+    if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
+    db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2, existing) => {
+      if (existing) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('You already submitted this assignment'));
+      const fileName = req.file ? req.file.originalname : null;
+      const fileData = req.file ? req.file.buffer : null;
+      const link = (link_url || '').trim() || null;
+      const text = (text_response || '').trim() || null;
+      if (!text && !fileData && !link) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Please provide a response (text, file, or link)'));
+      db.run('INSERT INTO submissions (assignment_id, student_id, text_response, file_name, file_data, link_url, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [aId, req.session.userId, text, fileName, fileData, link, 'submitted'],
+        function(err3) {
+          if (err3) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Submission failed'));
+          res.redirect('/student/assignments/' + aId + '?success=' + encodeURIComponent('Assignment submitted successfully'));
+        });
+    });
+  });
+});
+
+// --- Student: Withdraw submission ---
+app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  if (!aId) return res.redirect('/student/assignments');
+  db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err) => {
+    if (err) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
+    res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
   });
 });
 
