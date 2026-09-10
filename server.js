@@ -289,7 +289,7 @@ app.get('/', (req, res) => {
     if (req.session.role === 'admin') res.redirect('/admin');
     else res.redirect('/student');
   } else {
-    res.redirect('/login');
+    res.render('welcome');
   }
 });
 
