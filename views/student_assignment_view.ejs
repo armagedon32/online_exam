@@ -108,7 +108,7 @@
             </div>
           <% } %>
           <div style="margin-top: var(--space-3); display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center;">
-            <% if (mySub.status !== 'done') { %>
+            <% if (mySub.status !== 'done' && !isClosed) { %>
               <form action="/student/assignments/<%= assignment.id %>/withdraw" method="post" data-message="Withdraw your submission?<br><small>You will be able to resubmit.</small>" data-confirm-text="Withdraw" data-danger="true">
                 <button class="btn btn-danger btn-sm" type="submit">Withdraw Submission</button>
               </form>
@@ -117,21 +117,31 @@
           </div>
         </div>
       </div>
+    <% } else if (isClosed) { %>
+      <div class="card">
+        <div class="card-body" style="padding: var(--space-6); text-align:center;">
+          <div style="font-size: 2rem; margin-bottom: var(--space-2);">🔒</div>
+          <h3 style="margin: 0 0 var(--space-2);">Submission Closed</h3>
+          <p style="margin: 0; color: var(--text-muted); font-size: var(--text-sm);">
+            The due date (<strong><%= assignment.due_date %></strong>) has already passed, so you can no longer submit this assignment.
+          </p>
+        </div>
+      </div>
     <% } else { %>
       <div class="card">
         <div class="card-header"><h3>Submit Your Work</h3></div>
         <div class="card-body">
           <form action="/student/assignments/<%= assignment.id %>/submit" method="post" enctype="multipart/form-data">
             <div class="form-group">
-              <label>Your Answer / Response</label>
+              <label>Your Answer / Response <% if (assignment.require_answer) { %><span class="badge badge-danger">Required</span><% } %></label>
               <textarea name="text_response" rows="5" placeholder="Type your answer here..."></textarea>
             </div>
             <div class="form-group">
-              <label>Video Link (optional)</label>
+              <label>Video Link <% if (assignment.require_video) { %><span class="badge badge-danger">Required</span><% } else { %>(optional)<% } %></label>
               <input type="url" name="link_url" placeholder="https://youtube.com/... or any link">
             </div>
             <div class="form-group">
-              <label>Upload File (optional, max 10MB)</label>
+              <label>Upload File <% if (assignment.require_file) { %><span class="badge badge-danger">Required</span><% } else { %>(optional, max 10MB)<% } %></label>
               <input type="file" name="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.zip,.mp4,.mp3">
               <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">You can submit a text response, a link, a file — or all three.</p>
             </div>

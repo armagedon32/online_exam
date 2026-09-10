@@ -79,7 +79,7 @@
                     <% } %>
                   </td>
                   <td><% if (a.subject) { %><span class="badge badge-primary"><%= a.subject %></span><% } else { %><span class="cell-muted">—</span><% } %></td>
-                  <td><% if (a.due_date) { %><span class="badge badge-warning"><%= a.due_date %></span><% } else { %><span class="cell-muted">No due date</span><% } %></td>
+                  <td><% if (a.due_date) { %><span class="badge <%= a.closed ? 'badge-danger' : 'badge-warning' %>"><%= a.due_date %><%= a.closed ? ' · Closed' : '' %></span><% } else { %><span class="cell-muted">No due date</span><% } %></td>
                   <td><span class="badge badge-set"><%= a.submission_count %></span></td>
                   <td class="cell-muted" style="font-size:var(--text-xs);"><%= a.created_at %></td>
                   <td class="text-right">

@@ -63,8 +63,24 @@
             <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">Upload a worksheet, PDF, or any file — students can download it.</p>
           </div>
           <div class="form-group">
+            <label>Submission Requirements</label>
+            <div style="display:flex; flex-direction:column; gap:var(--space-2); margin-top:var(--space-1);">
+              <label style="display:flex; align-items:center; gap:var(--space-3); cursor:pointer; font-weight:500;">
+                <input type="checkbox" name="require_answer" value="1"> Require <b>Your Answer</b> (text response) before submitting
+              </label>
+              <label style="display:flex; align-items:center; gap:var(--space-3); cursor:pointer; font-weight:500;">
+                <input type="checkbox" name="require_video" value="1"> Require <b>Video Link</b> before submitting
+              </label>
+              <label style="display:flex; align-items:center; gap:var(--space-3); cursor:pointer; font-weight:500;">
+                <input type="checkbox" name="require_file" value="1"> Require <b>Upload File</b> before submitting
+              </label>
+              <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-1);">Students can only submit once all required fields above are filled.</p>
+            </div>
+          </div>
+          <div class="form-group">
             <label>Due Date</label>
             <input type="date" name="due_date">
+            <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">After this date passes, students can no longer submit or withdraw.</p>
           </div>
           <div class="card-footer">
             <a href="/admin/assignments" class="btn btn-secondary">Cancel</a>

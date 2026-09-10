@@ -169,6 +169,10 @@ db.serialize(() => {
   // migration: add downloadable file to assignments
   db.run("ALTER TABLE assignments ADD COLUMN file_name TEXT", () => {});
   db.run("ALTER TABLE assignments ADD COLUMN file_data BLOB", () => {});
+  // migration: submission requirements (required fields per assignment)
+  db.run("ALTER TABLE assignments ADD COLUMN require_answer INTEGER DEFAULT 0", () => {});
+  db.run("ALTER TABLE assignments ADD COLUMN require_video INTEGER DEFAULT 0", () => {});
+  db.run("ALTER TABLE assignments ADD COLUMN require_file INTEGER DEFAULT 0", () => {});
 
   // notifications table (bell) — created if not exists
   db.run(`
@@ -264,6 +268,12 @@ function scopeClause(req, col, alias) {
 function getAdminSubjects(req, cb) {
   const s = scopeClause(req, 'created_by');
   db.all('SELECT * FROM subjects WHERE 1=1' + s.sql + ' ORDER BY name', s.params, cb);
+}
+// True when an assignment's due date has already passed
+function isPastDue(dueDate) {
+  if (!dueDate) return false;
+  const due = new Date(dueDate + 'T23:59:59');
+  return !isNaN(due) && due < new Date();
 }
 // Get admin row by signup token (or super admin if token missing/generic)
 function findByToken(token, cb) {
@@ -984,6 +994,7 @@ app.get('/admin/assignments', isLoggedIn, isAdmin, (req, res) => {
   const sc = scopeClause(req, 'created_by');
   db.all('SELECT a.*, (SELECT COUNT(*) FROM submissions WHERE assignment_id = a.id) as submission_count FROM assignments a WHERE 1=1' + sc.sql + ' ORDER BY a.created_at DESC', sc.params, (err, assignments) => {
     if (err) return res.status(500).send('Database error');
+    (assignments || []).forEach(a => { a.closed = isPastDue(a.due_date); });
     res.render('admin_assignments', { assignments: assignments || [], user: req.session });
   });
 });
@@ -999,6 +1010,9 @@ app.get('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
 // --- Admin: Create assignment POST ---
 app.post('/admin/assignments/create', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
   const { title, description, subject, due_date } = req.body;
+  const requireAnswer = req.body.require_answer === '1' ? 1 : 0;
+  const requireVideo = req.body.require_video === '1' ? 1 : 0;
+  const requireFile = req.body.require_file === '1' ? 1 : 0;
   if (!title || !title.trim()) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Title is required'));
   const subjScope = scopeClause(req, 'created_by');
   if (subject) {
@@ -1012,8 +1026,8 @@ app.post('/admin/assignments/create', isLoggedIn, isAdmin, uploadAssignment.sing
   function doCreate() {
     const fileName = req.file ? req.file.originalname : null;
     const fileData = req.file ? req.file.buffer : null;
-    db.run('INSERT INTO assignments (title, description, subject, due_date, file_name, file_data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, fileName, fileData, req.session.userId],
+    db.run('INSERT INTO assignments (title, description, subject, due_date, file_name, file_data, require_answer, require_video, require_file, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title.trim(), (description || '').trim() || null, (subject || '').trim() || null, due_date || null, fileName, fileData, requireAnswer, requireVideo, requireFile, req.session.userId],
       function(err) {
         if (err) return res.redirect('/admin/assignments/create?error=' + encodeURIComponent('Failed to create assignment'));
         notifyAdminStudents(req.session.userId, 'assignment', 'New Assignment', title.trim(), '/student/assignments/' + this.lastID);
@@ -1110,6 +1124,7 @@ app.get('/student/assignments', isLoggedIn, (req, res) => {
         mySubs.forEach(s => { subMap[s.assignment_id] = s; });
         let filtered = assignments;
         if (mySubjects.length) filtered = assignments.filter(a => !a.subject || mySubjects.includes(a.subject));
+        filtered.forEach(a => { a.closed = isPastDue(a.due_date); });
         res.render('student_assignments', { assignments: filtered, subMap, user: req.session, mySubjects });
       });
     });
@@ -1133,7 +1148,7 @@ app.get('/student/assignments/:id', isLoggedIn, (req, res) => {
         return res.status(403).send('<div style="font-family:Inter,sans-serif;max-width:600px;margin:4rem auto;text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + assignment.subject + '</b>.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
       db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err3, mySub) => {
-        res.render('student_assignment_view', { assignment, mySub: mySub || null, user: req.session });
+        res.render('student_assignment_view', { assignment, mySub: mySub || null, user: req.session, isClosed: isPastDue(assignment.due_date) });
       });
     });
   });
@@ -1166,6 +1181,9 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
   if (!aId) return res.redirect('/student/assignments');
   db.get('SELECT * FROM assignments WHERE id = ?', [aId], (err, assignment) => {
     if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
+    if (isPastDue(assignment.due_date)) {
+      return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Submission is already closed — the due date has passed'));
+    }
     db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2, existing) => {
       if (existing) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('You already submitted this assignment'));
       const fileName = req.file ? req.file.originalname : null;
@@ -1173,6 +1191,9 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
       const link = (link_url || '').trim() || null;
       const text = (text_response || '').trim() || null;
       if (!text && !fileData && !link) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Please provide a response (text, file, or link)'));
+      if (assignment.require_answer && !text) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Your Answer is required for this assignment'));
+      if (assignment.require_video && !link) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('A video/link is required for this assignment'));
+      if (assignment.require_file && !fileData) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Uploading a file is required for this assignment'));
       db.run('INSERT INTO submissions (assignment_id, student_id, text_response, file_name, file_data, link_url, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [aId, req.session.userId, text, fileName, fileData, link, 'submitted'],
         function(err3) {
@@ -1187,9 +1208,15 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
 app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
   const aId = parseInt(req.params.id, 10);
   if (!aId) return res.redirect('/student/assignments');
-  db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err) => {
-    if (err) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
-    res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+  db.get('SELECT due_date FROM assignments WHERE id = ?', [aId], (err, assignment) => {
+    if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
+    if (isPastDue(assignment.due_date)) {
+      return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Withdrawal is not allowed — the due date has passed'));
+    }
+    db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2) => {
+      if (err2) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
+      res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+    });
   });
 });
 
