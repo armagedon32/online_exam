@@ -161,6 +161,9 @@ db.serialize(() => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+  // migration: add grading columns to submissions
+  db.run("ALTER TABLE submissions ADD COLUMN score TEXT", () => {});
+  db.run("ALTER TABLE submissions ADD COLUMN feedback TEXT", () => {});
 
 // Bootstrap default admin on a fresh/empty database
 db.serialize(() => {
@@ -995,13 +998,19 @@ app.get('/admin/assignments/:id', isLoggedIn, isAdmin, (req, res) => {
   });
 });
 
-// --- Admin: Mark submission as done ---
+// --- Admin: Grade submission (set score + feedback + mark done) ---
 app.post('/admin/assignments/submission/grade', isLoggedIn, isAdmin, (req, res) => {
-  const { submission_id, assignment_id } = req.body;
-  db.run('UPDATE submissions SET status = ? WHERE id = ? AND assignment_id = ?', ['done', submission_id, assignment_id], (err) => {
-    if (err) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Update failed'));
-    res.redirect('/admin/assignments/' + assignment_id + '?success=' + encodeURIComponent('Submission marked as done'));
-  });
+  const { submission_id, assignment_id, score, feedback } = req.body;
+  const finalScore = (score !== undefined && score !== '') ? String(score).trim() : null;
+  const finalFeedback = (feedback || '').trim() || null;
+  if (finalScore === null && !finalFeedback) {
+    return res.redirect('/admin/assignments/' + assignment_id + '?error=' + encodeURIComponent('Please provide a score or feedback'));
+  }
+  db.run('UPDATE submissions SET status = ?, score = ?, feedback = ? WHERE id = ? AND assignment_id = ?',
+    ['done', finalScore, finalFeedback, submission_id, assignment_id], (err) => {
+      if (err) return res.redirect('/admin/assignments?error=' + encodeURIComponent('Update failed'));
+      res.redirect('/admin/assignments/' + assignment_id + '?success=' + encodeURIComponent('Submission graded — score ' + (finalScore || '—') + ' saved'));
+    });
 });
 
 // --- Admin: Download submitted file ---
@@ -1038,7 +1047,7 @@ app.get('/student/assignments', isLoggedIn, (req, res) => {
     const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
     db.all('SELECT * FROM assignments WHERE created_by = ? ORDER BY created_at DESC', [ownerId], (err2, assignments) => {
       if (err2) return res.status(500).send('Database error');
-      db.all('SELECT assignment_id, status, submitted_at FROM submissions WHERE student_id = ?', [req.session.userId], (err3, mySubs) => {
+      db.all('SELECT assignment_id, status, submitted_at, score, feedback FROM submissions WHERE student_id = ?', [req.session.userId], (err3, mySubs) => {
         if (err3) mySubs = [];
         const subMap = {};
         mySubs.forEach(s => { subMap[s.assignment_id] = s; });

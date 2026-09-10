@@ -70,13 +70,14 @@
               <th>File</th>
               <th>Link</th>
               <th>Status</th>
+              <th>Score</th>
               <th>Submitted</th>
               <th class="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             <% if (submissions.length === 0) { %>
-              <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No submissions yet.</td></tr>
+              <tr><td colspan="9" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No submissions yet.</td></tr>
             <% } %>
             <% submissions.forEach(s => { %>
               <tr style="<%= s.status === 'done' ? 'background: var(--bg-tertiary); opacity:0.85;' : '' %>">
@@ -104,19 +105,41 @@
                     <span class="badge badge-warning">Submitted</span>
                   <% } %>
                 </td>
+                <td>
+                  <% if (s.score || s.feedback) { %>
+                    <span class="badge badge-primary" style="font-size:var(--text-sm);"><%= s.score || '—' %></span>
+                    <% if (s.feedback) { %><div style="font-size:var(--text-xs); color:var(--text-muted); margin-top:var(--space-1); max-width:140px;">💬 <%= s.feedback %></div><% } %>
+                  <% } else { %><span class="cell-muted">—</span><% } %>
+                </td>
                 <td class="cell-muted" style="font-size:var(--text-xs);"><%= s.submitted_at %></td>
                 <td class="text-right">
-                  <% if (s.status !== 'done') { %>
-                    <form action="/admin/assignments/submission/grade" method="post" class="d-inline">
-                      <input type="hidden" name="submission_id" value="<%= s.id %>">
-                      <input type="hidden" name="assignment_id" value="<%= assignment.id %>">
-                      <button class="btn btn-success btn-sm" type="submit">Mark as Done</button>
-                    </form>
-                  <% } else { %>
-                    <span class="cell-muted" style="font-size:var(--text-sm);">Completed ✓</span>
-                  <% } %>
+                  <div class="actions">
+                    <button class="btn <%= s.status === 'done' ? 'btn-edit' : 'btn-success' %> btn-sm" onclick="openGrade(<%= s.id %>)"><%= s.status === 'done' ? 'Re-Grade' : 'Grade' %></button>
+                  </div>
                 </td>
               </tr>
+              <!-- Grade Modal -->
+              <div id="grade-<%= s.id %>" class="modal" onclick="if(event.target===this) closeGrade(<%= s.id %>)">
+                <div class="modal-card" style="max-width:440px;">
+                  <div class="modal-header"><h3>Grade — <%= s.full_name || s.username %></h3><button class="close-modal" onclick="closeGrade(<%= s.id %>)">&times;</button></div>
+                  <form action="/admin/assignments/submission/grade" method="post">
+                    <input type="hidden" name="submission_id" value="<%= s.id %>">
+                    <input type="hidden" name="assignment_id" value="<%= assignment.id %>">
+                    <div class="form-group">
+                      <label>Score</label>
+                      <input type="text" name="score" value="<%= s.score || '' %>" placeholder="e.g., 95 / 100 — or A / B / P">
+                    </div>
+                    <div class="form-group">
+                      <label>Feedback (optional)</label>
+                      <textarea name="feedback" rows="3" placeholder="Comment for the student..."><%= s.feedback || '' %></textarea>
+                    </div>
+                    <div class="card-footer">
+                      <button type="button" class="btn btn-secondary" onclick="closeGrade(<%= s.id %>)">Cancel</button>
+                      <button type="submit" class="btn btn-primary">Save & Mark Done</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             <% }) %>
           </tbody>
         </table>
@@ -153,6 +176,10 @@
     <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
   </footer>
   <script src="/ui.js"></script>
-  <script>uiShowUrlAlerts();</script>
+  <script>
+    uiShowUrlAlerts();
+    function openGrade(id){ document.getElementById('grade-'+id).classList.add('show'); }
+    function closeGrade(id){ document.getElementById('grade-'+id).classList.remove('show'); }
+  </script>
 </body>
 </html>

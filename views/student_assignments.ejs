@@ -76,7 +76,11 @@
                 </p>
                 <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light); font-size: var(--text-xs); color: var(--text-muted);">
                   <span>Submitted <%= new Date(sub.submitted_at).toLocaleDateString() %></span>
-                  <span style="background: var(--color-200); color: var(--color-600); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-weight: var(--font-semibold); font-size: var(--text-xs);">Submitted ✓</span>
+                  <% if (isDone && (sub.score || sub.feedback)) { %>
+                    <span style="background: var(--color-200); color: var(--color-600); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-weight: var(--font-semibold); font-size: var(--text-xs);">Score: <%= sub.score || '—' %><%= isDone ? ' ✓' : '' %></span>
+                  <% } else { %>
+                    <span style="background: var(--color-200); color: var(--color-600); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); font-weight: var(--font-semibold); font-size: var(--text-xs);">Submitted ✓</span>
+                  <% } %>
                 </div>
               </div>
               </a>
