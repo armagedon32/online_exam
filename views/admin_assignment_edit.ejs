@@ -43,62 +43,72 @@
     <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
 
     <div class="card">
-      <div class="card-header"><h3>Assignment #<%= assignment.id %> — <%= assignment.title %></h3></div>
+      <div class="card-header"><h3><%= assignment.title %></h3></div>
       <div class="card-body">
         <form action="/admin/assignments/<%= assignment.id %>/edit" method="post" enctype="multipart/form-data">
           <div class="form-group">
             <label>Title *</label>
             <input type="text" name="title" value="<%= assignment.title %>" required>
           </div>
+
           <div class="form-group">
             <label>Description / Instructions</label>
             <textarea name="description" rows="4" placeholder="Describe what students need to submit..."><%= assignment.description || '' %></textarea>
           </div>
-          <div class="form-group">
-            <label>Subject</label>
-            <select name="subject">
-              <option value="">— All Subjects —</option>
-              <% subjects.forEach(s => { %>
-                <option value="<%= s.name %>" <%= assignment.subject === s.name ? 'selected' : '' %>><%= s.name %></option>
-              <% }) %>
-            </select>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Subject</label>
+              <select name="subject">
+                <option value="">— All Subjects —</option>
+                <% subjects.forEach(s => { %>
+                  <option value="<%= s.name %>" <%= assignment.subject === s.name ? 'selected' : '' %>><%= s.name %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Due Date</label>
+              <input type="date" name="due_date" value="<%= assignment.due_date || '' %>">
+            </div>
           </div>
+          <p class="form-hint" style="margin-top:-var(--space-2); margin-bottom:var(--space-4);">After the due date passes, students can no longer submit or withdraw. Extend it to reopen submissions.</p>
+
           <div class="form-group">
             <label>Attachment File</label>
             <% if (assignment.file_name) { %>
-              <p style="margin:0 0 var(--space-2); font-size:var(--text-sm);">
-                📎 <%= assignment.file_name %>
-                <a href="/admin/assignments/<%= assignment.id %>/file" class="badge badge-view" style="text-decoration:none;" download="<%= assignment.file_name %>">Download</a>
-                <label style="display:inline-flex; align-items:center; gap:var(--space-1); color:var(--text-danger); cursor:pointer; font-size:var(--text-xs); margin-left:var(--space-2);">
+              <div style="display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3); background:var(--bg-tertiary); border:1px solid var(--border-light); border-radius:var(--radius-md); margin-bottom:var(--space-3); flex-wrap:wrap;">
+                <span style="flex:1; font-size:var(--text-sm); min-width:180px;">📎 <%= assignment.file_name %></span>
+                <a href="/admin/assignments/<%= assignment.id %>/file" class="btn btn-view btn-sm" download="<%= assignment.file_name %>">Download</a>
+                <label style="display:inline-flex; align-items:center; gap:var(--space-1); cursor:pointer; font-size:var(--text-xs); color:var(--color-danger); text-transform:none; letter-spacing:0; margin:0;">
                   <input type="checkbox" name="remove_file" value="1"> Remove file
                 </label>
-              </p>
+              </div>
             <% } else { %>
-              <p style="margin:0 0 var(--space-2); font-size:var(--text-xs); color:var(--text-muted);">No file attached to this assignment.</p>
+              <p class="form-hint" style="margin: 0 0 var(--space-3);">No file attached to this assignment.</p>
             <% } %>
             <input type="file" name="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.zip,.mp4,.mp3">
-            <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">Choose a new file only if you want to replace the current attachment.</p>
+            <p class="form-hint">Choose a new file only if you want to replace the current attachment.</p>
           </div>
+
           <div class="form-group">
             <label>Submission Requirements</label>
-            <div style="display:flex; flex-direction:column; gap:var(--space-2); margin-top:var(--space-1);">
-              <label style="display:flex; align-items:center; gap:var(--space-3); cursor:pointer; font-weight:500;">
-                <input type="checkbox" name="require_answer" value="1" <%= assignment.require_answer ? 'checked' : '' %>> Require <b>Your Answer</b> (text response) before submitting
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input type="checkbox" name="require_answer" value="1" <%= assignment.require_answer ? 'checked' : '' %>>
+                <span>Require <strong>Your Answer</strong> (text response)</span>
               </label>
-              <label style="display:flex; align-items:center; gap:var(--space-3); cursor:pointer; font-weight:500;">
-                <input type="checkbox" name="require_video" value="1" <%= assignment.require_video ? 'checked' : '' %>> Require <b>Video Link</b> before submitting
+              <label class="checkbox-item">
+                <input type="checkbox" name="require_video" value="1" <%= assignment.require_video ? 'checked' : '' %>>
+                <span>Require <strong>Video Link</strong></span>
               </label>
-              <label style="display:flex; align-items:center; gap:var(--space-3); cursor:pointer; font-weight:500;">
-                <input type="checkbox" name="require_file" value="1" <%= assignment.require_file ? 'checked' : '' %>> Require <b>Upload File</b> before submitting
+              <label class="checkbox-item">
+                <input type="checkbox" name="require_file" value="1" <%= assignment.require_file ? 'checked' : '' %>>
+                <span>Require <strong>Upload File</strong></span>
               </label>
-              <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-1);">Students can only submit once all required fields above are filled.</p>
             </div>
+            <p class="form-hint">Students can only submit once all required fields above are filled.</p>
           </div>
-          <div class="form-group">
-            <label>Due Date</label>
-            <input type="date" name="due_date" value="<%= assignment.due_date || '' %>">
-            <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">After this date passes, students can no longer submit or withdraw. Extend it to reopen submissions.</p>
-          </div>
+
           <div class="card-footer">
             <a href="/admin/assignments" class="btn btn-secondary">Cancel</a>
             <button type="submit" class="btn btn-primary">Save Changes</button>
