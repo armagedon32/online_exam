@@ -236,10 +236,18 @@
               <div id="reset-<%= u.id %>" class="modal" onclick="if(event.target===this) closeReset(<%= u.id %>)">
                 <div class="modal-card" style="max-width:420px;">
                   <div class="modal-header"><h3>Reset Password — <%= u.username %></h3><button class="close-modal" onclick="closeReset(<%= u.id %>)">&times;</button></div>
-                  <p style="color:var(--text-muted); font-size:0.85rem;">Leave blank to auto-generate <b>Temp####!</b> — give temp password to user to login, then they can <b>Change Password</b>.</p>
+                  <p style="color:var(--text-muted); font-size:0.85rem;">Click <b>Generate</b> for a strong temporary password — or leave blank to auto-generate <b>Temp####!</b> Give the temp password to the user; they can then <b>Change Password</b>.</p>
                   <form action="/admin/users/reset-password" method="post">
                     <input type="hidden" name="id" value="<%= u.id %>">
-                    <div class="form-group"><label>Temp Password (optional)</label><input type="text" name="temp_password" placeholder="e.g., Temp1234!"></div>
+                    <div class="form-group">
+                      <label>Temp Password</label>
+                      <div style="display:flex; gap:var(--space-2);">
+                        <input type="text" id="temp-<%= u.id %>" name="temp_password" placeholder="Click Generate" style="flex:1;">
+                        <button type="button" class="btn btn-secondary" onclick="genPass(<%= u.id %>)" title="Generate a random strong password">🎲 Generate</button>
+                        <button type="button" class="btn btn-secondary" onclick="copyPass(<%= u.id %>)" title="Copy generated password">Copy</button>
+                      </div>
+                      <p class="form-hint" id="passhint-<%= u.id %>" style="margin-top:var(--space-2);"></p>
+                    </div>
                     <div class="card-footer">
                       <button type="button" class="btn btn-secondary" onclick="closeReset(<%= u.id %>)">Cancel</button>
                       <button type="submit" class="btn btn-warning">Reset</button>
@@ -277,6 +285,25 @@
     function closeEdit(id){ document.getElementById('edit-'+id).classList.remove('show'); }
     function openReset(id){ document.getElementById('reset-'+id).classList.add('show'); }
     function closeReset(id){ document.getElementById('reset-'+id).classList.remove('show'); }
+    function genPass(id){
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#%&!?';
+      const arr = new Uint32Array(14);
+      crypto.getRandomValues(arr);
+      let pw = '';
+      for (let i=0; i<14; i++) pw += chars[arr[i] % chars.length];
+      const input = document.getElementById('temp-'+id);
+      input.value = pw;
+      const hint = document.getElementById('passhint-'+id);
+      hint.innerHTML = '🎲 Generated: <b>' + pw + '</b> — ipakita ito sa user.';
+    }
+    function copyPass(id){
+      const input = document.getElementById('temp-'+id);
+      if (!input.value) return genPass(id);
+      input.select();
+      document.execCommand('copy');
+      const hint = document.getElementById('passhint-'+id);
+      hint.innerHTML = '✅ Copied: <b>' + input.value + '</b>';
+    }
     function copySignupLink() {
       const inp = document.getElementById('signupLinkInput');
       const btn = document.getElementById('copyLinkBtn');
