@@ -294,7 +294,7 @@
       const input = document.getElementById('temp-'+id);
       input.value = pw;
       const hint = document.getElementById('passhint-'+id);
-      hint.innerHTML = '🎲 Generated: <b>' + pw + '</b> — ipakita ito sa user.';
+      hint.innerHTML = '🎲 Generated: <b>' + pw + '</b> — I-click ang <b>Reset</b> para ma-save, pagkatapos ibigay ito sa user.';
     }
     function copyPass(id){
       const input = document.getElementById('temp-'+id);
@@ -302,7 +302,7 @@
       input.select();
       document.execCommand('copy');
       const hint = document.getElementById('passhint-'+id);
-      hint.innerHTML = '✅ Copied: <b>' + input.value + '</b>';
+      hint.innerHTML = '✅ Copied: <b>' + input.value + '</b> — i-click ang <b>Reset</b> para ma-save ang password.';
     }
     function copySignupLink() {
       const inp = document.getElementById('signupLinkInput');

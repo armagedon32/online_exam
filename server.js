@@ -930,8 +930,8 @@ app.post('/admin/users/update', isLoggedIn, isAdmin, (req, res) => {
 
 app.post('/admin/users/reset-password', isLoggedIn, isAdmin, (req, res) => {
   const { id, temp_password } = req.body;
-  let temp = (temp_password || '').trim();
-  if (!temp) temp = 'Temp' + Math.floor(1000 + Math.random() * 9000) + '!';
+  let temp = temp_password || '';
+  if (!String(temp).trim()) temp = 'Temp' + Math.floor(1000 + Math.random() * 9000) + '!';
   db.run('UPDATE users SET password=?, is_locked=0, failed_attempts=0 WHERE id=?', [temp, id], (err) => {
     if (err) return res.redirect('/admin/users?error=' + encodeURIComponent('Reset failed'));
     db.get('SELECT username FROM users WHERE id=?', [id], (err2, u) => {
