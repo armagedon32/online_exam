@@ -228,6 +228,9 @@ db.serialize(() => {
 db.serialize(() => {
   // Make account id=1 the super admin
   db.run("UPDATE users SET is_super=1, role='admin' WHERE id=1");
+  // Normalize usernames: trim, fix Unicode spaces (nbsp=160, ideographic=12288), collapse double spaces
+  db.run(`UPDATE users SET username = TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(username, char(160), ' '), char(12288), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '))
+          WHERE username != TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(username, char(160), ' '), char(12288), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '))`);
   // Existing content owned by super admin (id=1)
   db.run("UPDATE subjects SET created_by=1 WHERE created_by IS NULL");
   db.run("UPDATE questions SET created_by=1 WHERE created_by IS NULL");
@@ -300,8 +303,9 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password) return res.redirect('/login?error=' + encodeURIComponent('Username and password required'));
-  db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
+  const uname = String(username || '').replace(/\u00A0/g, ' ').trim().replace(/\s{2,}/g, ' ');
+  if (!uname || !password) return res.redirect('/login?error=' + encodeURIComponent('Username and password required'));
+  db.get('SELECT * FROM users WHERE username = ?', [uname], (err, user) => {
     if (err) return res.redirect('/login?error=' + encodeURIComponent('Database error'));
     if (!user) return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again'));
     if (user.is_locked) {
