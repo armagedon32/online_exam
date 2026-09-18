@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= quizTitle %> — Student Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css?v=20260831">
+</head>
+<body>
+  <div class="quiz-shell">
+    <!-- Header with Timer & Progress -->
+    <header class="quiz-header" role="banner">
+      <div class="quiz-header-left">
+        <h1 class="quiz-title"><%= quizTitle %></h1>
+        <span class="quiz-subject"><%= subjectName %></span>
+      </div>
+      <div class="quiz-timer" aria-live="polite" aria-atomic="true">
+        <div class="timer-display" id="timerDisplay">--:--</div>
+        <div class="timer-label">Time Remaining</div>
+      </div>
+    </header>
+    <div class="quiz-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Quiz progress">
+      <div class="quiz-progress-fill" id="progressFill" style="width: 0%"></div>
+    </div>
+
+    <!-- Main Quiz Area -->
+    <main class="quiz-main" role="main">
+      <div class="slides-container" id="slidesContainer">
+        <!-- Slides rendered by JS -->
+      </div>
+
+      <!-- Question Navigation Dots -->
+      <nav class="nav-dots" id="navDots" aria-label="Question navigation" role="navigation">
+        <!-- Dots rendered by JS -->
+      </nav>
+
+      <!-- Slide Navigation Buttons -->
+      <div class="slide-nav" id="slideNav">
+        <button class="nav-btn btn-prev" id="btnPrev" disabled aria-label="Previous question">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          <span>Previous</span>
+        </button>
+        <button class="nav-btn btn-next" id="btnNext" aria-label="Next question">
+          <span>Next</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button class="nav-btn btn-submit" id="btnSubmit" style="display:none;" aria-label="Submit quiz">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/></svg>
+          <span>Submit Quiz</span>
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Quiz Data (injected by server) -->
+  <script id="quiz-data" type="application/json">
+  {
+    "quizId": <%= quizId %>,
+    "duration": <%= duration %>,
+    "questions": <%- JSON.stringify(questions) %>,
+    "quizTitle": "<%= quizTitle %>",
+    "subjectName": "<%= subjectName %>"
+  }
+  </script>
+
+  <!-- Review Modal -->
+  <div class="modal review-modal" id="reviewModal" onclick="if(event.target===this) closeReview()" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="modal-card">
+      <div class="modal-header review-header">
+        <h3 class="review-title" id="reviewTitle">Review Answers</h3>
+        <button class="close-modal" onclick="closeReview()" aria-label="Close review">&times;</button>
+      </div>
+      <div class="review-stats" id="reviewStats" aria-label="Answer statistics"></div>
+      <div class="review-grid" id="reviewGrid" role="listbox" aria-label="Questions"></div>
+      <div class="review-legend">
+        <span class="review-legend-item"><span class="review-legend-dot answered" style="background:var(--color-success-light);border-color:var(--color-success)"></span>Answered</span>
+        <span class="review-legend-item"><span class="review-legend-dot unanswered" style="background:var(--bg-tertiary);border-color:var(--border-medium)"></span>Unanswered</span>
+        <span class="review-legend-item"><span class="review-legend-dot flagged" style="background:var(--color-warning-light);border-color:var(--color-warning)"></span>Flagged</span>
+        <span class="review-legend-item"><span class="review-legend-dot current" style="background:transparent;border-color:var(--color-primary)"></span>Current</span>
+      </div>
+      <div class="review-actions">
+        <button class="btn btn-secondary" onclick="closeReview()">Back to Quiz</button>
+        <button class="btn btn-primary" id="btnFinalSubmit" onclick="confirmSubmit()">Submit Quiz</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Time-up Overlay -->
+  <div class="timeup-overlay" id="timeupOverlay" style="display:none;" role="alertdialog" aria-modal="true" aria-labelledby="timeupTitle">
+    <div class="timeup-card">
+      <svg class="timeup-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      <h2 class="timeup-title" id="timeupTitle">Time's Up!</h2>
+      <p class="timeup-message">The quiz has been automatically submitted.</p>
+      <button class="timeup-btn" onclick="location.href='/student/quiz/<%= quizId %>/result'">View Results</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Student Portal System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script>
+    // ============================================================
+    // QUIZ APPLICATION LOGIC — Persistent State
+    // ============================================================
+    (function() {
+      'use strict';
+
+      // ---- Storage Keys ----
+      const STORAGE_PREFIX = 'quiz_';
+      const getStorageKey = (quizId, key) => `${STORAGE_PREFIX}${quizId}_${key}`;
+
+      // ---- State ----
+      const data = JSON.parse(document.getElementById('quiz-data').textContent);
+      const Quiz = {
+        quizId: data.quizId,
+        duration: data.duration * 60, // convert minutes to seconds
+        questions: data.questions,
+        quizTitle: data.quizTitle,
+        subjectName: data.subjectName,
+        current: 0,
+        answers: {},      // { questionId: optionIndex }
+        flagged: new Set(),
+        timerId: null,
+        startTime: null,
+        submitted: false,
+        isRestored: false
+      };
+
+      // ---- DOM Elements ----
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+      const timerDisplay = $('#timerDisplay');
+      const progressFill = $('#progressFill');
+      const slidesContainer = $('#slidesContainer');
+      const navDots = $('#navDots');
+      const btnPrev = $('#btnPrev');
+      const btnNext = $('#btnNext');
+      const btnSubmit = $('#btnSubmit');
+      const reviewModal = $('#reviewModal');
+      const reviewGrid = $('#reviewGrid');
+      const reviewStats = $('#reviewStats');
+      const btnFinalSubmit = $('#btnFinalSubmit');
+      const timeupOverlay = $('#timeupOverlay');
+
+      // ---- Persistence Helpers ----
+      const saveState = () => {
+        try {
+          localStorage.setItem(getStorageKey(Quiz.quizId, 'answers'), JSON.stringify(Quiz.answers));
+          localStorage.setItem(getStorageKey(Quiz.quizId, 'current'), Quiz.current.toString());
+          localStorage.setItem(getStorageKey(Quiz.quizId, 'flagged'), JSON.stringify([...Quiz.flagged]));
+          localStorage.setItem(getStorageKey(Quiz.quizId, 'startTime'), Quiz.startTime.toString());
+        } catch (e) { console.warn('Failed to save quiz state:', e); }
+      };
+
+      const loadState = () => {
+        try {
+          const savedAnswers = localStorage.getItem(getStorageKey(Quiz.quizId, 'answers'));
+          const savedCurrent = localStorage.getItem(getStorageKey(Quiz.quizId, 'current'));
+          const savedFlagged = localStorage.getItem(getStorageKey(Quiz.quizId, 'flagged'));
+          const savedStartTime = localStorage.getItem(getStorageKey(Quiz.quizId, 'startTime'));
+
+          if (savedAnswers) Quiz.answers = JSON.parse(savedAnswers);
+          if (savedCurrent !== null) Quiz.current = parseInt(savedCurrent, 10);
+          if (savedFlagged) Quiz.flagged = new Set(JSON.parse(savedFlagged));
+          if (savedStartTime) Quiz.startTime = parseInt(savedStartTime, 10);
+
+          Quiz.isRestored = !!(savedAnswers || savedCurrent || savedFlagged || savedStartTime);
+        } catch (e) { console.warn('Failed to load quiz state:', e); }
+      };
+
+      const clearState = () => {
+        try {
+          ['answers', 'current', 'flagged', 'startTime'].forEach(key => {
+            localStorage.removeItem(getStorageKey(Quiz.quizId, key));
+          });
+        } catch (e) { console.warn('Failed to clear quiz state:', e); }
+      };
+
+      // ---- Utility ----
+      const escapeHtml = (str) => String(str || '')
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
+        .replace(/"/g, '"')
+        .replace(/'/g, '&#039;');
+
+      const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+      };
+
+      const updateProgress = () => {
+        const pct = ((Quiz.current + 1) / Quiz.questions.length) * 100;
+        progressFill.style.width = `${pct}%`;
+        progressFill.parentElement.setAttribute('aria-valuenow', Math.round(pct));
+      };
+
+      const updateTimer = () => {
+        const elapsed = Math.floor((Date.now() - Quiz.startTime) / 1000);
+        Quiz.duration = Math.max(0, (data.duration * 60) - elapsed);
+        timerDisplay.textContent = formatTime(Quiz.duration);
+        if (Quiz.duration <= 60) timerDisplay.classList.add('urgent');
+        if (Quiz.duration <= 0) {
+          clearInterval(Quiz.timerId);
+          autoSubmit();
+        }
+      };
+
+      // ---- Render ----
+      const renderSlides = () => {
+        slidesContainer.innerHTML = Quiz.questions.map((q, i) => `
+          <article class="question-slide ${i === Quiz.current ? 'active' : ''}" data-index="${i}" role="tabpanel" aria-labelledby="q-${q.id}-label">
+            <div class="question-card">
+              <div class="q-head">
+                <span class="q-number">Question ${i + 1}</span>
+                <span class="q-count">${i + 1} of ${Quiz.questions.length}</span>
+              </div>
+              <h2 class="question-text" id="q-${q.id}-label">${escapeHtml(q.question_text)}</h2>
+              <div class="options" role="radiogroup" aria-label="Answer options">
+                ${q.options.map((opt, oi) => `
+                  <label class="option ${Quiz.answers[q.id] === oi ? 'selected' : ''}" data-qid="${q.id}" data-oi="${oi}" tabindex="0">
+                    <input type="radio" name="q-${q.id}" value="${oi}" ${Quiz.answers[q.id] === oi ? 'checked' : ''} aria-label="Option ${String.fromCharCode(65 + oi)}">
+                    <span class="option-marker">${String.fromCharCode(65 + oi)}.</span>
+                    <span class="option-label">${escapeHtml(opt)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          </article>
+        `).join('');
+
+        $$('.option').forEach(el => {
+          el.addEventListener('click', () => selectOption(el));
+          el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectOption(el); }
+          });
+        });
+      };
+
+      const renderNavDots = () => {
+        navDots.innerHTML = Quiz.questions.map((q, i) => `
+          <button class="nav-dot ${i === Quiz.current ? 'active' : ''} ${Quiz.answers[q.id] !== undefined ? 'answered' : ''} ${Quiz.flagged.has(q.id) ? 'flagged' : ''}"
+                  data-index="${i}" aria-label="Question ${i + 1} ${Quiz.answers[q.id] !== undefined ? '(answered)' : '(unanswered)'} ${Quiz.flagged.has(q.id) ? '(flagged)' : ''}"
+                  title="Question ${i + 1}${Quiz.answers[q.id] !== undefined ? ' ✓' : ''}${Quiz.flagged.has(q.id) ? ' ⚑' : ''}">
+            ${i + 1}
+          </button>
+        `).join('');
+
+        $$('.nav-dot').forEach(btn => {
+          btn.addEventListener('click', () => goToSlide(parseInt(btn.dataset.index, 10)));
+        });
+      };
+
+      const renderReview = () => {
+        const answered = Object.keys(Quiz.answers).length;
+        const unanswered = Quiz.questions.length - answered;
+        const flagged = Quiz.flagged.size;
+        reviewStats.innerHTML = `
+          <span class="review-stat answered">${answered} Answered</span>
+          <span class="review-stat unanswered">${unanswered} Unanswered</span>
+          <span class="review-stat flagged">${flagged} Flagged</span>
+        `;
+        reviewGrid.innerHTML = Quiz.questions.map((q, i) => `
+          <button class="review-dot ${Quiz.answers[q.id] !== undefined ? 'answered' : 'unanswered'} ${Quiz.flagged.has(q.id) ? 'flagged' : ''} ${i === Quiz.current ? 'current' : ''}"
+                  data-index="${i}" role="option" aria-selected="${i === Quiz.current}"
+                  aria-label="Question ${i + 1}: ${Quiz.answers[q.id] !== undefined ? 'Answered' : 'Unanswered'}${Quiz.flagged.has(q.id) ? ', Flagged' : ''}">
+            ${i + 1}
+          </button>
+        `).join('');
+
+        $$('.review-dot').forEach(btn => {
+          btn.addEventListener('click', () => {
+            goToSlide(parseInt(btn.dataset.index, 10));
+            closeReview();
+          });
+        });
+      };
+
+      const updateNavButtons = () => {
+        btnPrev.disabled = Quiz.current === 0;
+        const isLast = Quiz.current === Quiz.questions.length - 1;
+        btnNext.style.display = isLast ? 'none' : 'flex';
+        btnSubmit.style.display = isLast ? 'flex' : 'none';
+      };
+
+      const refreshUI = () => {
+        renderNavDots();
+        updateNavButtons();
+        updateProgress();
+        saveState();
+      };
+
+      // ---- Navigation ----
+      const goToSlide = (index) => {
+        if (index < 0 || index >= Quiz.questions.length) return;
+        $$('.question-slide').forEach(s => s.classList.remove('active'));
+        slidesContainer.children[index]?.classList.add('active');
+        Quiz.current = index;
+        refreshUI();
+      };
+
+      const nextSlide = () => goToSlide(Quiz.current + 1);
+      const prevSlide = () => goToSlide(Quiz.current - 1);
+
+      // ---- Answer Selection ----
+      const selectOption = (el) => {
+        const qid = el.dataset.qid;
+        const oi = parseInt(el.dataset.oi, 10);
+        Quiz.answers[qid] = oi;
+        $$(`.option[data-qid="${qid}"]`).forEach(o => o.classList.remove('selected'));
+        el.classList.add('selected');
+        el.querySelector('input').checked = true;
+        refreshUI();
+      };
+
+      // ---- Flag Toggle ----
+      const toggleFlag = () => {
+        const qid = Quiz.questions[Quiz.current].id;
+        if (Quiz.flagged.has(qid)) Quiz.flagged.delete(qid);
+        else Quiz.flagged.add(qid);
+        refreshUI();
+      };
+
+      // ---- Review Modal ----
+      const openReview = () => {
+        renderReview();
+        reviewModal.classList.add('show');
+      };
+      const closeReview = () => reviewModal.classList.remove('show');
+
+      // ---- Timer ----
+      const startTimer = () => {
+        if (!Quiz.startTime) {
+          Quiz.startTime = Date.now();
+        }
+        updateTimer();
+        Quiz.timerId = setInterval(updateTimer, 500); // Update every 500ms for smooth timer
+      };
+
+      // ---- Submit ----
+      const submitQuiz = async () => {
+        if (Quiz.submitted) return;
+        Quiz.submitted = true;
+        clearInterval(Quiz.timerId);
+
+        const payload = {};
+        Quiz.questions.forEach(q => {
+          const a = Quiz.answers[q.id];
+          payload[q.id] = a === undefined ? -1 : String.fromCharCode(65 + a);
+        });
+
+        try {
+          const res = await fetch(`/student/quiz/${Quiz.quizId}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: payload })
+          });
+          if (res.ok) {
+            clearState(); // Clear persisted state on successful submit
+            const result = await res.json();
+            if (result.redirect) location.href = result.redirect;
+            else location.href = `/student/quiz/${Quiz.quizId}/result`;
+          } else {
+            uiToast('Submit failed. Please try again.', 'error');
+            Quiz.submitted = false;
+            startTimer();
+          }
+        } catch (e) {
+          console.error(e);
+          uiToast('Network error. Please check your connection and try again.', 'error');
+          Quiz.submitted = false;
+          startTimer();
+        }
+      };
+
+      const autoSubmit = () => {
+        timeupOverlay.style.display = 'flex';
+        submitQuiz();
+      };
+
+      const confirmSubmit = async () => {
+        const ok = await uiConfirm('Are you sure you want to submit? You cannot change answers after submitting.', { confirmText: 'Submit Quiz', danger: true });
+        if (ok) submitQuiz();
+      };
+
+      // ---- Keyboard Shortcuts ----
+      document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (reviewModal.classList.contains('show')) {
+          if (e.key === 'Escape') closeReview();
+          return;
+        }
+        switch (e.key) {
+          case 'ArrowRight': e.preventDefault(); nextSlide(); break;
+          case 'ArrowLeft': e.preventDefault(); prevSlide(); break;
+          case 'Enter':
+            if (Quiz.current === Quiz.questions.length - 1) {
+              e.preventDefault();
+              confirmSubmit();
+            } else {
+              nextSlide();
+            }
+            break;
+          case 'f':
+          case 'F': toggleFlag(); break;
+          case 'r':
+          case 'R': openReview(); break;
+          case '1': case '2': case '3': case '4':
+            const idx = parseInt(e.key, 10) - 1;
+            const opts = $$(`.option[data-qid="${Quiz.questions[Quiz.current].id}"]`);
+            if (opts[idx]) selectOption(opts[idx]);
+            break;
+        }
+      });
+
+      // ---- Button Events ----
+      btnPrev.addEventListener('click', prevSlide);
+      btnNext.addEventListener('click', nextSlide);
+      btnSubmit.addEventListener('click', confirmSubmit);
+      btnFinalSubmit.addEventListener('click', confirmSubmit);
+
+      // ---- Init ----
+      loadState();
+
+      // Initialize startTime if not restored
+      if (!Quiz.startTime) {
+        Quiz.startTime = Date.now();
+      }
+
+      renderSlides();
+      renderNavDots();
+      refreshUI();
+      startTimer();
+
+      // Expose for inline onclick
+      window.goToSlide = goToSlide;
+      window.openReview = openReview;
+      window.closeReview = closeReview;
+      window.toggleFlag = toggleFlag;
+    })();
+  </script>
+</body>
+</html>

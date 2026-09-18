@@ -202,6 +202,34 @@ db.serialize(() => {
     );
   `);
 
+// ===== QUIZ TABLES (separate module from exams - quizzes stay distinct, never merged with exams) =====
+db.run(`CREATE TABLE IF NOT EXISTS quizzes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  subject TEXT,
+  semester TEXT,
+  period TEXT,
+  instruction TEXT,
+  duration INTEGER,
+  instructor TEXT,
+  due_date TEXT,
+  active INTEGER DEFAULT 1,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);`);
+db.run(`CREATE TABLE IF NOT EXISTS quiz_questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quiz_id INTEGER,
+  question_id INTEGER
+);`);
+db.run(`CREATE TABLE IF NOT EXISTS quiz_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER,
+  quiz_id INTEGER,
+  score REAL DEFAULT 0,
+  completed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);`);
+
 // ---------- Notification helpers ----------
 function notifyUser(userId, type, title, body, link) {
   if (!userId) return;
@@ -624,6 +652,185 @@ app.post('/admin/exams/set-active', isLoggedIn, isAdmin, (req, res) => {
   });
 });
 
+// ===== QUIZ MODULE (separate from exams: own admin manager / create / take / submit / result) =====
+// ===== QUIZ MODULE (separate from exams so quizzes and exams never mix) =====
+
+// Quiz lock helper (mirror of examLocked, uses the same columns)
+function quizLocked(z) {
+  return Boolean(!z || (z && (Number(z.active) === 0 || (z.due_date && isPastDue(z.due_date)))));
+}
+
+// Admin: Quizzes manager - list quizzes scoped to this admin (super sees all)
+app.get('/admin/quizzes', isLoggedIn, isAdmin, (req, res) => {
+  const sc = scopeClause(req, 'created_by', 'z');
+  db.all('SELECT z.*, (SELECT COUNT(*) FROM quiz_questions qq WHERE qq.quiz_id = z.id) as question_count FROM quizzes z WHERE 1=1' + sc.sql + ' ORDER BY z.created_at DESC', sc.params, (err, quizzes) => {
+    if (err) return res.status(500).send('Database error');
+    (quizzes || []).forEach(z => { z.closed = quizLocked(z); });
+    res.render('admin_quizzes', { quizzes: quizzes || [], user: req.session });
+  });
+});
+
+// Admin: Reopen a closed quiz - extends due date (default +7 days) and re-enables it
+app.post('/admin/quizzes/reopen', isLoggedIn, isAdmin, (req, res) => {
+  const quizId = parseInt(req.body.id, 10);
+  const days = parseInt(req.body.days, 10) || 7;
+  if (!Number.isInteger(quizId) || quizId <= 0 || days < 1 || days > 365) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Invalid quiz or number of days'));
+  const sc = scopeClause(req, 'created_by', 'z');
+  db.get('SELECT z.id, z.title FROM quizzes z WHERE z.id = ?' + sc.sql, [quizId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Quiz not found'));
+    const newDue = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    db.run('UPDATE quizzes SET due_date = ?, active = 1 WHERE id = ?', [newDue, quizId], (err2) => {
+      if (err2) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Failed to reopen quiz'));
+      notifyAdminStudents(req.session.userId, 'quiz', 'Quiz Reopened', 'The quiz "' + row.title + '" is open again for your class. New due date: ' + newDue + ' (until 11:59 PM).', '/student');
+      res.redirect('/admin/quizzes?success=' + encodeURIComponent('Quiz "' + row.title + '" reopened for ' + days + ' day(s), due ' + newDue));
+    });
+  });
+});
+
+// Admin: Disable/Enable a quiz immediately (blocks students right away)
+app.post('/admin/quizzes/set-active', isLoggedIn, isAdmin, (req, res) => {
+  const quizId = parseInt(req.body.id, 10);
+  const val = req.body.active === '0' ? 0 : 1;
+  if (!Number.isInteger(quizId) || quizId <= 0) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Invalid quiz'));
+  const sc = scopeClause(req, 'created_by', 'z');
+  db.get('SELECT z.id, z.title FROM quizzes z WHERE z.id = ?' + sc.sql, [quizId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Quiz not found'));
+    db.run('UPDATE quizzes SET active = ? WHERE id = ?', [val, quizId], (err2) => {
+      if (err2) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Failed to update quiz'));
+      if (val === 0) {
+        notifyAdminStudents(req.session.userId, 'quiz', 'Quiz Closed', 'The quiz "' + row.title + '" has been closed by your instructor.', '/student');
+      }
+      res.redirect('/admin/quizzes?success=' + encodeURIComponent(val === 0 ? ('Quiz "' + row.title + '" disabled') : ('Quiz "' + row.title + '" enabled')));
+    });
+  });
+});
+
+// Admin: Create quiz page - dynamic subjects + questions filtered by subject (scoped to admin)
+app.get('/admin/quizzes/create', isLoggedIn, isAdmin, (req, res) => {
+  getAdminSubjects(req, (err, subjects) => {
+    if (err) subjects = [];
+    const qSc = scopeClause(req, 'created_by');
+    db.all('SELECT * FROM questions WHERE 1=1' + qSc.sql + ' ORDER BY subject, created_at DESC LIMIT 100', qSc.params, (err2, questions) => {
+      if (err2) return res.status(500).send('Database error');
+      res.render('create_quiz', { questions: questions || [], subjects: subjects || [], user: req.session });
+    });
+  });
+});
+
+app.post('/admin/quizzes/create', isLoggedIn, isAdmin, (req, res) => {
+  const { title, subject, semester, period, instruction, duration, instructor, due_date, questionIds } = req.body;
+  if (!title || !subject || !semester || !period) return res.redirect('/admin/quizzes/create?error=' + encodeURIComponent('Title, Subject, Semester and Period required'));
+  const raw = questionIds ? (Array.isArray(questionIds) ? questionIds : [questionIds]) : [];
+  const qIds = raw.map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
+  if (!qIds.length) return res.redirect('/admin/quizzes/create?warning=' + encodeURIComponent('Select at least one valid question'));
+  const subjSc = scopeClause(req, 'created_by');
+  db.get('SELECT COUNT(*) as cnt FROM subjects WHERE name = ?' + subjSc.sql, [subject].concat(subjSc.params), (errS, sRow) => {
+    if (errS || !sRow || sRow.cnt === 0) return res.redirect('/admin/quizzes/create?error=' + encodeURIComponent('Invalid subject for your account'));
+    const qScope = scopeClause(req, 'created_by');
+    const placeholders = qIds.map(() => '?').join(',');
+    db.all('SELECT COUNT(*) as cnt FROM questions WHERE id IN (' + placeholders + ')' + qScope.sql, qIds.concat(qScope.params), (errQ, qRow) => {
+      if (errQ || !qRow || qRow[0].cnt !== qIds.length) return res.redirect('/admin/quizzes/create?error=' + encodeURIComponent('One or more selected questions are invalid or not yours'));
+      db.run('INSERT INTO quizzes (title, subject, semester, period, instruction, duration, instructor, due_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [title, subject, semester, period, instruction || null, duration, instructor, (due_date || '').trim() || null, req.session.userId], function(err) {
+        if (err) return res.redirect('/admin/quizzes/create?error=' + encodeURIComponent('Failed to create quiz'));
+        const quizId = this.lastID;
+        const stmt = db.prepare('INSERT INTO quiz_questions (quiz_id, question_id) VALUES (?, ?)');
+        let insertedQ = 0;
+        let done = 0;
+        qIds.forEach((id, i) => stmt.run(quizId, id, (e2) => { if (!e2) insertedQ++; if (++done === qIds.length) stmt.finalize(() => res.redirect('/admin/quizzes?success=' + encodeURIComponent('Quiz "' + title + '" created with ' + insertedQ + ' questions'))); }));
+      });
+    });
+  });
+});
+
+// Student: Take a quiz - checks subject access + that quiz belongs to student's admin (referrer)
+app.get('/student/quiz/:quizId', isLoggedIn, (req, res) => {
+  const quizId = req.params.quizId;
+  db.get('SELECT z.*, GROUP_CONCAT(q.id || "||" || q.question || "||" || q.option_a || "||" || q.option_b || "||" || q.option_c || "||" || q.option_d || "||" || q.correct_answer, "|||") as qlist FROM quizzes z LEFT JOIN quiz_questions zq ON z.id = zq.quiz_id LEFT JOIN questions q ON zq.question_id = q.id WHERE z.id = ? GROUP BY z.id', [quizId], (err, quiz) => {
+    if (err) return res.status(500).send('Database error');
+    if (!quiz) return res.status(404).send('Quiz not found');
+    db.get('SELECT subjects, referrer_id, full_name FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      let mySubjects = [];
+      try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e){ mySubjects = []; }
+      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      if (quiz.created_by && quiz.created_by !== ownerId) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>This quiz does not belong to your class/teacher.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
+      if (mySubjects.length && !mySubjects.includes(quiz.subject)) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + quiz.subject + '</b>.</p><p>Your subjects: ' + mySubjects.join(', ') + '</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
+      if (quizLocked(quiz)) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Quiz Closed</h3><p>This quiz is closed or disabled by your instructor.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
+      db.get('SELECT * FROM quiz_scores WHERE student_id=? AND quiz_id=?', [req.session.userId, quizId], (err3, taken) => {
+        if (err3) return res.status(500).send('Database error');
+        if (taken) return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Already Taken</h3><p>You already took <b>' + quiz.title + '</b> &mdash; Score: <b>' + taken.score + '</b></p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+        const qList = quiz.qlist ? quiz.qlist.split('|||') : [];
+        const parsed = qList.map(q => {
+          const parts = q.split('||');
+          return { id: parts[0], question_text: parts[1], options: [parts[2], parts[3], parts[4], parts[5]], correct: parts[6] };
+        }).filter(q => q.id && q.question_text);
+        res.render('take_quiz', {
+          quizId: quiz.id,
+          quizTitle: quiz.title,
+          subjectName: quiz.subject,
+          duration: quiz.duration || 30,
+          questions: parsed,
+          user: req.session
+        });
+      });
+    });
+  });
+});
+
+// Student: Submit quiz - auto-grades against questions.correct_answer, saves score in quiz_scores
+app.post('/student/quiz/:quizId/submit', isLoggedIn, (req, res) => {
+  const quizId = req.params.quizId;
+  db.get('SELECT * FROM quizzes WHERE id = ?', [quizId], (err, quiz) => {
+    if (err || !quiz) return res.status(403).send('Quiz not found');
+    db.get('SELECT referrer_id, subjects FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      if (quiz.created_by && quiz.created_by !== ownerId) return res.status(403).send('Access denied');
+      if (quizLocked(quiz)) return res.status(403).send('This quiz is closed');
+      db.get('SELECT * FROM quiz_scores WHERE student_id=? AND quiz_id=?', [req.session.userId, quizId], (err3, taken) => {
+        if (err3) return res.status(500).send('Database error');
+        if (taken) return res.status(403).send('You already took this quiz');
+        const qIds = (req.body.questionId ? (Array.isArray(req.body.questionId) ? req.body.questionId : [req.body.questionId]) : []).map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
+        if (!qIds.length) return res.status(400).send('No answers submitted');
+        const placeholders = qIds.map(() => '?').join(',');
+        db.all('SELECT id, correct_answer FROM questions WHERE id IN (' + placeholders + ') AND created_by IN (?)', qIds.concat([ownerId]), (err4, qrows) => {
+          if (err4) return res.status(500).send('Database error');
+          let score = 0;
+          qrows.forEach(qr => { const sel = req.body['a_' + qr.id]; if (sel && String(sel) === String(qr.correct_answer)) score++; });
+          db.run('INSERT INTO quiz_scores (student_id, quiz_id, score) VALUES (?, ?, ?)', [req.session.userId, quizId, score], (err5) => {
+            if (err5) return res.status(500).send('Database error');
+            res.json({ redirect: '/student/quiz/' + quizId + '/result' });
+          });
+        });
+      });
+    });
+  });
+});
+
+// Student: Quiz result page
+app.get('/student/quiz/:quizId/result', isLoggedIn, (req, res) => {
+  const quizId = req.params.quizId;
+  db.get('SELECT title FROM quizzes WHERE id = ?', [quizId], (err, quiz) => {
+    if (err) return res.status(500).send('Database error');
+    const quizTitle = quiz ? quiz.title : 'Quiz';
+    db.get('SELECT score FROM quiz_scores WHERE student_id=? AND quiz_id=? ORDER BY id DESC LIMIT 1', [req.session.userId, quizId], (err2, scoreRow) => {
+      if (err2) return res.status(500).send('Database error');
+      db.all('SELECT COUNT(*) as total FROM quiz_questions WHERE quiz_id = ?', [quizId], (err3, rows) => {
+        if (err3) return res.status(500).send('Database error');
+        const total = (rows && rows[0]) ? rows[0].total : 0;
+        const score = scoreRow ? scoreRow.score : 0;
+        const percentage = total ? Math.round(score / total * 100) : 0;
+        res.render('quiz_result', { score, total, percentage, quizTitle, quizId, user: req.session });
+      });
+    });
+  });
+});
+
 // Student dashboard - list exams filtered by student's admin (referrer) + subjects, show taken + score
 app.get('/student', isLoggedIn, (req, res) => {
   db.get('SELECT subjects, full_name, course, year_level, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
@@ -639,7 +846,19 @@ app.get('/student', isLoggedIn, (req, res) => {
         let filtered = allExams;
         if (mySubjects && mySubjects.length) filtered = allExams.filter(e => mySubjects.includes(e.subject));
         filtered.forEach(e => { e.closed = examLocked(e); });
-        res.render('student_dashboard', { exams: filtered, allExams, user: req.session, mySubjects, scoreMap, takenSet });
+        db.all('SELECT z.*, GROUP_CONCAT(qq.question_id,',') as qids FROM quizzes z LEFT JOIN quiz_questions qq ON z.id = qq.quiz_id WHERE z.created_at >= ? GROUP BY z.id ORDER BY z.created_at DESC', ['1900-01-01'], (errQ, quizzes) => {
+          if (errQ) { return res.status(500).send('Database error'); }
+          db.all('SELECT quiz_id, score, completed_at FROM quiz_scores WHERE student_id = ?', [req.session.userId], (errSQ, quizScores) => {
+            if (errSQ) { return res.status(500).send('Database error'); }
+            const qScoreMap = {}; const qTakenSet = new Set();
+            (quizScores || []).forEach(qs => { qScoreMap[qs.quiz_id] = qs; qTakenSet.add(String(qs.quiz_id)); });
+            (quizzes || []).forEach(z => { z.closed = quizLocked(z); z.question_count = z.qids ? z.qids.split(',').length : 0; });
+            const quizList = quizzes || [];
+            const quizScoreMap = qScoreMap;
+            const quizTakenSet = qTakenSet;
+            res.render('student_dashboard', { exams: filtered, allExams, user: req.session, mySubjects, scoreMap, takenSet, quizzes: quizList, quizScoreMap, quizTakenSet });
+          });
+        });
       });
     });
   });
