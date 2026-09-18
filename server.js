@@ -277,6 +277,37 @@ db.serialize(() => {
   });
 });
 
+// Deduplicate questions: rows with the SAME subject + question + all four options are treated
+// as accidental re-uploads (e.g. repeated CSV/Excel imports while "nothing appeared" last night).
+// Keeps the LOWEST id (the original), deletes the newer copies. Runs on boot against the live
+// (Railway) DB so already-saved duplicates get removed.
+db.serialize(() => {
+  const dupSql =
+    `DELETE FROM questions WHERE id IN (
+       SELECT id FROM (
+         SELECT id,
+                ROW_NUMBER() OVER (
+                  PARTITION BY subject, question, option_a, option_b, option_c, option_d
+                  ORDER BY id
+                ) AS rn
+         FROM questions
+       ) WHERE rn > 1
+     )`;
+  db.all("SELECT COUNT(*) AS total FROM questions", [], (err, rows) => {
+    if (err) return console.error('dedup count error:', err.message);
+    const before = rows && rows[0] ? rows[0].total : 0;
+    db.run(dupSql, (err2) => {
+      if (err2) { console.error('question dedup error:', err2.message); return; }
+      db.all("SELECT COUNT(*) AS total FROM questions", [], (err3, rows2) => {
+        const after = rows2 && rows2[0] ? rows2[0].total : 0;
+        if (before - after > 0) {
+          console.log('Question dedup: removed ' + (before - after) + ' duplicate(s) (' + before + ' -> ' + after + ')');
+        }
+      });
+    });
+  });
+});
+
 
 db.serialize(() => {
   // Make account id=1 the super admin
