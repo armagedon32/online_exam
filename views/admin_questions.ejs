@@ -95,8 +95,12 @@
             <strong>Select All</strong>
           </label>
           <span id="selectedCount" class="meta">Selected: 0 questions</span>
+          <button type="button" id="headerDeleteBtn" class="btn btn-danger" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;margin-right:4px;"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path></svg>
+            Delete Selected
+          </button>
           <a href="/admin/questions/add" class="btn btn-primary" style="margin-left:auto;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;margin-right:4px;"><path d="M12 5v14M5 12h14"></path></svg>
             Add Question
           </a>
         </div>
@@ -229,6 +233,7 @@
         const n = document.querySelectorAll('#questions-list input:checked').length;
         counter.textContent = 'Selected: ' + n + ' question' + (n !== 1 ? 's' : '');
         deleteBtn.disabled = n === 0;
+        headerDeleteBtn.disabled = n === 0;
         document.querySelectorAll('.q-item').forEach(el => {
           const cb = el.querySelector('input');
           if (cb && cb.checked) el.classList.add('checked'); else el.classList.remove('checked');
@@ -297,6 +302,18 @@
           }
           if (!confirm('Delete ' + checked.length + ' selected question(s)? This cannot be undone.')) {
             e.preventDefault();
+          }
+        });
+      }
+
+      // Header "Delete Selected" button submits the same form (it's outside the <form>, type="button").
+      const headerDeleteBtn = document.getElementById('headerDeleteBtn');
+      if (headerDeleteBtn) {
+        headerDeleteBtn.addEventListener('click', function() {
+          const n = document.querySelectorAll('#questions-list input:checked').length;
+          if (n === 0) return;
+          if (confirm('Delete ' + n + ' selected question(s)? This cannot be undone.')) {
+            questionsForm.requestSubmit();
           }
         });
       }
