@@ -255,7 +255,29 @@ db.serialize(() => {
   });
 });
 
-// Seed/backfill multi-admin columns (idempotent)
+// One-time cleanup of replacement char (U+FFFD, shown as "�") stored by earlier Excel/CSV
+// imports. Runs on boot against the live (Railway) DB so already-saved rows get fixed.
+db.serialize(() => {
+  const stripReplacer = (col) =>
+    `REPLACE(REPLACE(REPLACE(${col}, char(65533), ''), char(0), ''), char(65533), '')`;
+  const cleanTables = [
+    ['questions', ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer']],
+    ['exams', ['title', 'instruction']],
+    ['quizzes', ['title', 'instruction']],
+    ['lessons', ['title', 'description']],
+    ['assignments', ['title', 'description']],
+    ['subjects', ['name']],
+  ];
+  cleanTables.forEach(([table, cols]) => {
+    cols.forEach(col => {
+      db.run(`UPDATE ${table} SET ${col} = ${stripReplacer(col)} WHERE ${col} LIKE '%` + '\uFFFD' + `%'`, (err) => {
+        if (err) console.error('U+FFFD cleanup ' + table + '.' + col + ':', err.message);
+      });
+    });
+  });
+});
+
+
 db.serialize(() => {
   // Make account id=1 the super admin
   db.run("UPDATE users SET is_super=1, role='admin' WHERE id=1");
@@ -546,6 +568,7 @@ app.post('/admin/questions/upload', isLoggedIn, isAdmin, upload.single('csv'), (
         .replace(/[\u00A0]/g, ' ')            // non-breaking space
         .replace(/[\u200B-\u200F]/g, '')      // zero-width chars
         .replace(/[\uFEFF]/g, '')             // BOM
+        .replace(/[\uFFFD]/g, '')             // replacement char (�)
         .trim();
     }
     
