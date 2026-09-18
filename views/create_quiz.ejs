@@ -170,18 +170,34 @@
             <span>Select a Subject above to see its questions. Questions are grouped by Subject you created in <b>Questions → Subject</b>.</span>
           </div>
 
+          <div class="filter-toolbar" style="display:flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-4);">
+            <div style="flex: 1 1 240px; min-width: 0;">
+              <input type="search" id="questionSearch" class="form-control" placeholder="Search questions&hellip; (type to filter below)" autocomplete="off">
+            </div>
+            <div style="display:flex; align-items:center; gap: var(--space-2);">
+              <label for="questionDateFilter" class="form-label" style="margin: 0; white-space: nowrap;">Added:</label>
+              <select id="questionDateFilter" class="form-control" style="width: auto;">
+                <option value="all">All dates</option>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="0">Today</option>
+              </select>
+            </div>
+          </div>
+
           <div id="questions-list" class="questions-list">
             <% if (typeof questions !== 'undefined' && questions.length) { %>
               <% let subjIdx = {}; %>
               <% questions.forEach((q) => { %>
                 <% subjIdx[q.subject] = (subjIdx[q.subject] || 0) + 1; %>
-                <label class="checkbox-item q-item" data-subject="<%= q.subject %>">
+                <label class="checkbox-item q-item" data-subject="<%= q.subject %>" data-created="<%= q.created_at || '' %>">
                   <input type="checkbox" name="questionIds" value="<%= q.id %>">
                   <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2);">
+                    <div style="display:flex; align-items:center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2);">
                       <span class="badge badge-neutral" style="font-size: var(--text-xs);">Q<%= subjIdx[q.subject] %></span>
                       <span class="badge badge-primary"><%= q.subject %></span>
-                      <span class="badge badge-success">Correct: <%= q.correct_answer %></span>
+                      <span class="badge badge-primary">Correct: <%= q.correct_answer %></span>
+                      <span class="badge badge-success" style="font-size: var(--text-xs);"><%= new Date(q.created_at || Date.now()).toLocaleString('en-PH',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}) %></span>
                     </div>
                     <p style="margin: 0 0 var(--space-2); font-weight: var(--font-medium); color: var(--text-primary);"><%= q.question %></p>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); font-size: var(--text-sm);">
@@ -240,6 +256,8 @@
       const items = document.querySelectorAll('.q-item');
       const hint = document.getElementById('filterHint');
       const selectAllCb = document.getElementById('selectAllCb');
+      const searchInput = document.getElementById('questionSearch');
+      const dateFilterCtl = document.getElementById('questionDateFilter');
 
       function visibleBoxes() {
         return [...boxes].filter(cb => cb.closest('.q-item').style.display !== 'none');
@@ -263,17 +281,31 @@
 
       function filterQuestions() {
         const sel = subjectSelect ? subjectSelect.value : '';
+        const qtext = (searchInput ? searchInput.value : '').trim().toLowerCase();
+        const dval = dateFilterCtl ? dateFilterCtl.value : 'all';
+        const now = Date.now();
+        const DAY = 86400000;
+        function withinDays(s) {
+          if (!dval || dval === 'all') return true;
+          if (!s) return true;
+          const d = new Date(String(s).replace(' ', 'T') + 'Z');
+          if (isNaN(d.getTime())) return true;
+          const days = Math.floor((now - d.getTime()) / DAY);
+          return days >= 0 && days <= parseInt(dval, 10);
+        }
         let visible = 0;
         items.forEach(it => {
-          const show = !sel || it.dataset.subject === sel;
+          let show = !sel || it.dataset.subject === sel;
+          if (show && qtext) show = (it.textContent || '').toLowerCase().indexOf(qtext) !== -1;
+          if (show) show = withinDays(it.dataset.created);
           it.style.display = show ? 'flex' : 'none';
           if (!show) it.querySelector('input').checked = false;
           if (show) visible++;
         });
         update();
         hint.style.display = 'block';
-        if (!sel) {
-          hint.textContent = 'Showing all ' + items.length + ' questions — select a Subject above to filter.';
+        if (!sel && !qtext && (!dval || dval === 'all')) {
+          hint.textContent = 'Showing all ' + items.length + ' questions — pick a Subject, type to Search, or use the Added date filter.';
           hint.className = 'alert alert-success';
           hint.querySelector('svg').outerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
         } else if (visible === 0) {
@@ -296,6 +328,9 @@
 
       boxes.forEach(b => b.addEventListener('change', update));
       if (subjectSelect) subjectSelect.addEventListener('change', filterQuestions);
+
+      if (searchInput) searchInput.addEventListener('input', filterQuestions);
+      if (dateFilterCtl) dateFilterCtl.addEventListener('change', filterQuestions);
       filterQuestions();
     });
   </script>
