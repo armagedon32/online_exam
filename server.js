@@ -782,9 +782,13 @@ app.get('/student/quiz/:quizId', isLoggedIn, (req, res) => {
     if (err) return res.status(500).send('Database error');
     if (!quiz) return res.status(404).send('Quiz not found');
     db.get('SELECT subjects, referrer_id, full_name FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      if (err2) return res.status(500).send('Database error');
       let mySubjects = [];
       try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e){ mySubjects = []; }
-      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      const ownerId = u?.referrer_id ?? null;
+      if (!ownerId) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>No instructor assigned to your account.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
       if (quiz.created_by && quiz.created_by !== ownerId) {
         return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>This quiz does not belong to your class/teacher.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
@@ -821,7 +825,9 @@ app.post('/student/quiz/:quizId/submit', isLoggedIn, (req, res) => {
   db.get('SELECT * FROM quizzes WHERE id = ?', [quizId], (err, quiz) => {
     if (err || !quiz) return res.status(403).send('Quiz not found');
     db.get('SELECT referrer_id, subjects FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
-      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      if (err2) return res.status(500).send('Database error');
+      const ownerId = u?.referrer_id ?? null;
+      if (!ownerId) return res.status(403).send('Access denied: no instructor assigned');
       if (quiz.created_by && quiz.created_by !== ownerId) return res.status(403).send('Access denied');
       if (quizLocked(quiz)) return res.status(403).send('This quiz is closed');
       db.get('SELECT * FROM quiz_scores WHERE student_id=? AND quiz_id=?', [req.session.userId, quizId], (err3, taken) => {
@@ -884,7 +890,7 @@ app.get('/student', isLoggedIn, (req, res) => {
         if (mySubjects && mySubjects.length) filtered = allExams.filter(e => mySubjects.includes(e.subject));
         filtered.forEach(e => { e.closed = examLocked(e); });
         db.all('SELECT z.*, GROUP_CONCAT(qq.question_id,',') as qids FROM quizzes z LEFT JOIN quiz_questions qq ON z.id = qq.quiz_id WHERE z.created_at >= ? GROUP BY z.id ORDER BY z.created_at DESC', ['1900-01-01'], (errQ, quizzes) => {
-          if (errQ) { return res.status(500).send('Database error'); }
+          if (errQ) { console.error('Quiz query error:', errQ); return res.status(500).send('Database error'); }
           db.all('SELECT quiz_id, score, completed_at FROM quiz_scores WHERE student_id = ?', [req.session.userId], (errSQ, quizScores) => {
             if (errSQ) { return res.status(500).send('Database error'); }
             const qScoreMap = {}; const qTakenSet = new Set();
@@ -907,10 +913,14 @@ app.get('/student/exam/:examId', isLoggedIn, (req, res) => {
   db.get(`SELECT e.*, GROUP_CONCAT(q.id || "||" || q.question || "||" || q.option_a || "||" || q.option_b || "||" || q.option_c || "||" || q.option_d || "||" || q.correct_answer, '|||') as qlist FROM exams e LEFT JOIN exam_questions eq ON e.id = eq.exam_id LEFT JOIN questions q ON eq.question_id = q.id WHERE e.id = ? GROUP BY e.id`, [examId], (err, exam) => {
     if (err) return res.status(500).send('Database error');
     if (!exam) return res.status(404).send('Exam not found');
-    db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      if (err2) return res.status(500).send('Database error');
       let mySubjects = [];
       try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e){}
-      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      const ownerId = u?.referrer_id ?? null;
+      if (!ownerId) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>No instructor assigned to your account.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
       if (exam.created_by && exam.created_by !== ownerId) {
         return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>This exam does not belong to your class/teacher.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
@@ -1493,9 +1503,13 @@ app.post('/admin/assignments/delete', isLoggedIn, isAdmin, (req, res) => {
 // --- Student: List assignments ---
 app.get('/student/assignments', isLoggedIn, (req, res) => {
   db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    if (err) return res.status(500).send('Database error');
     let mySubjects = [];
     try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
-    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    const ownerId = u?.referrer_id ?? null;
+    if (!ownerId) {
+      return res.render('student_assignments', { assignments: [], subMap: {}, user: req.session, mySubjects, subjects: [], selected: '' });
+    }
     db.all('SELECT * FROM assignments WHERE created_by = ? ORDER BY created_at DESC', [ownerId], (err2, assignments) => {
       if (err2) return res.status(500).send('Database error');
       db.all('SELECT assignment_id, status, submitted_at, score, feedback FROM submissions WHERE student_id = ?', [req.session.userId], (err3, mySubs) => {
@@ -1521,9 +1535,13 @@ app.get('/student/assignments/:id', isLoggedIn, (req, res) => {
   db.get('SELECT * FROM assignments WHERE id = ?', [aId], (err, assignment) => {
     if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
     db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      if (err2) return res.status(500).send('Database error');
       let mySubjects = [];
       try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
-      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      const ownerId = u?.referrer_id ?? null;
+      if (!ownerId) {
+        return res.status(403).send('<div style="font-family:Inter,sans-serif;max-width:600px;margin:4rem auto;text-align:center;"><h3>Access denied</h3><p>No instructor assigned to your account.</p><a href="/student/assignments" style="color:#6366f1;">Back to assignments</a></div>');
+      }
       if (assignment.created_by && assignment.created_by !== ownerId) {
         return res.status(403).send('<div style="font-family:Inter,sans-serif;max-width:600px;margin:4rem auto;text-align:center;"><h3>Access denied</h3><p>This assignment does not belong to your class/teacher.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
@@ -1544,9 +1562,11 @@ app.get('/student/assignments/:id/file', isLoggedIn, (req, res) => {
   db.get('SELECT file_name, file_data, created_by, subject FROM assignments WHERE id = ?', [aId], (err, row) => {
     if (err || !row) return res.status(404).send('Assignment not found');
     db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err2, u) => {
+      if (err2) return res.status(500).send('Database error');
       let mySubjects = [];
       try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
-      const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+      const ownerId = u?.referrer_id ?? null;
+      if (!ownerId) return res.status(403).send('Access denied: no instructor assigned');
       if (row.created_by && row.created_by !== ownerId) return res.status(403).send('Access denied');
       if (mySubjects.length && row.subject && !mySubjects.includes(row.subject)) return res.status(403).send('Access denied');
       if (!row.file_data) return res.status(404).send('No file uploaded for this assignment');
@@ -1735,9 +1755,13 @@ app.post('/admin/lessons/delete', isLoggedIn, isAdmin, (req, res) => {
 // --- Student: List lessons (grouped by date, scoped to own teacher + subjects) ---
 app.get('/student/lessons', isLoggedIn, (req, res) => {
   db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    if (err) return res.status(500).send('Database error');
     let mySubjects = [];
     try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
-    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    const ownerId = u?.referrer_id ?? null;
+    if (!ownerId) {
+      return res.render('student_lessons', { byDate: {}, lessonCount: 0, user: req.session, mySubjects, subjects: [], selected: '' });
+    }
     db.all('SELECT * FROM lessons WHERE created_by = ? ORDER BY date DESC, created_at DESC', [ownerId], (err2, lessons) => {
       if (err2) return res.status(500).send('Database error');
       let filtered = lessons;
@@ -1760,7 +1784,9 @@ app.get('/student/lessons', isLoggedIn, (req, res) => {
 app.get('/student/lessons/:id/file', isLoggedIn, (req, res) => {
   const lId = parseInt(req.params.id, 10);
   db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
-    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    if (err) return res.status(500).send('Database error');
+    const ownerId = u?.referrer_id ?? null;
+    if (!ownerId) return res.status(403).send('Access denied: no instructor assigned');
     db.get('SELECT * FROM lessons WHERE id = ? AND created_by = ?', [lId, ownerId], (err2, lesson) => {
       if (err2 || !lesson || !lesson.file_data) return res.status(404).send('File not found');
       db.get('SELECT subjects FROM users WHERE id = ?', [req.session.userId], (err3, u2) => {
