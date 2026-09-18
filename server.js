@@ -534,14 +534,29 @@ app.post('/admin/questions/upload', isLoggedIn, isAdmin, upload.single('csv'), (
     const stmt = db.prepare('INSERT INTO questions (subject, question, option_a, option_b, option_c, option_d, correct_answer, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     let pending = records.length;
     if (pending === 0) return res.redirect('/admin/questions/add?warning=' + encodeURIComponent('No rows to import'));
+    
+    // Sanitize function to clean Excel special characters
+    function sanitize(str) {
+      if (!str) return '';
+      return str
+        .replace(/[\u2018\u2019]/g, "'")      // smart single quotes
+        .replace(/[\u201C\u201D]/g, '"')      // smart double quotes
+        .replace(/[\u2013\u2014]/g, '-')      // en/em dashes
+        .replace(/[\u2026]/g, '...')          // ellipsis
+        .replace(/[\u00A0]/g, ' ')            // non-breaking space
+        .replace(/[\u200B-\u200F]/g, '')      // zero-width chars
+        .replace(/[\uFEFF]/g, '')             // BOM
+        .trim();
+    }
+    
     records.forEach((r, idx) => {
-      const subject = (r.subject || r.Subject || '').trim();
-      const question = (r.question || r.Question || '').trim();
-      const option_a = (r.option_a || r.Option_A || '').trim();
-      const option_b = (r.option_b || '').trim();
-      const option_c = (r.option_c || '').trim();
-      const option_d = (r.option_d || '').trim();
-      const correct = (r.correct_answer || r.correct || r.Correct || '').trim().toUpperCase();
+      const subject = sanitize(r.subject || r.Subject || '');
+      const question = sanitize(r.question || r.Question || '');
+      const option_a = sanitize(r.option_a || r.Option_A || '');
+      const option_b = sanitize(r.option_b || '');
+      const option_c = sanitize(r.option_c || '');
+      const option_d = sanitize(r.option_d || '');
+      const correct = sanitize(r.correct_answer || r.correct || r.Correct || '').toUpperCase();
       if (!subject || !question || !option_a || !option_b || !option_c || !option_d || !['A','B','C','D'].includes(correct)) {
         errors.push('Row ' + (idx+2) + ' invalid');
         if (--pending === 0) finish();

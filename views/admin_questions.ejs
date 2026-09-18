@@ -90,7 +90,12 @@
       <div class="card-header" style="flex-wrap: wrap; gap: var(--space-3); align-items: center;">
         <h3>Question Bank</h3>
         <div style="display:flex; align-items:center; gap: var(--space-3); flex-wrap: wrap; margin-left: auto;">
-          <a href="/admin/questions/add" class="btn btn-primary" style="margin-right:auto;">
+          <label class="select-all-control" style="display:flex; align-items:center; gap: var(--space-2); font-size: var(--text-sm); cursor:pointer; color: var(--text-primary);">
+            <input type="checkbox" id="selectAllCb" style="width:16px;height:16px;accent-color:var(--color-primary);cursor:pointer;">
+            <strong>Select All</strong>
+          </label>
+          <span id="selectedCount" class="meta">Selected: 0 questions</span>
+          <a href="/admin/questions/add" class="btn btn-primary" style="margin-left:auto;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
             Add Question
           </a>
@@ -100,6 +105,17 @@
         <div class="filter-toolbar" style="display:flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-4);">
           <div style="flex: 1 1 240px; min-width: 0;">
             <input type="search" id="questionSearch" class="form-control" placeholder="Search questions&hellip; (type to filter below)" autocomplete="off">
+          </div>
+          <div style="display:flex; align-items:center; gap: var(--space-2);">
+            <label for="subject" class="form-label" style="margin: 0; white-space: nowrap;">Subject:</label>
+            <select id="subject" class="form-control" style="width: auto; min-width: 180px;">
+              <option value="">All Subjects</option>
+              <% if (subjects && subjects.length) { %>
+                <% subjects.forEach(s => { %>
+                  <option value="<%= s.name %>"><%= s.code ? s.code + ' - ' : '' %><%= s.name %></option>
+                <% }) %>
+              <% } %>
+            </select>
           </div>
           <div style="display:flex; align-items:center; gap: var(--space-2);">
             <label for="questionDateFilter" class="form-label" style="margin: 0; white-space: nowrap;">Added:</label>
