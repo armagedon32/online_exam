@@ -510,6 +510,18 @@ app.get('/admin/questions/template', isLoggedIn, isAdmin, (req, res) => {
   res.send(csv);
 });
 
+// Questions management page - list with search, date filter, and delete
+app.get('/admin/questions', isLoggedIn, isAdmin, (req, res) => {
+  getAdminSubjects(req, (err, subjects) => {
+    if (err) subjects = [];
+    const qSc = scopeClause(req, 'created_by');
+    db.all('SELECT * FROM questions WHERE 1=1' + qSc.sql + ' ORDER BY created_at DESC', qSc.params, (errQ, questions) => {
+      if (errQ) questions = [];
+      res.render('admin_questions', { questions: questions || [], subjects: subjects || [], user: req.session });
+    });
+  });
+});
+
 // Bulk upload CSV
 app.post('/admin/questions/upload', isLoggedIn, isAdmin, upload.single('csv'), (req, res) => {
   if (!req.file) return res.redirect('/admin/questions/add?error=' + encodeURIComponent('No file uploaded'));
@@ -553,12 +565,17 @@ app.post('/admin/questions/upload', isLoggedIn, isAdmin, upload.single('csv'), (
   }
 });
 
-// Delete question
+// Delete question(s)
 app.post('/admin/questions/delete', isLoggedIn, isAdmin, (req, res) => {
-  const { id } = req.body;
-  db.run('DELETE FROM questions WHERE id = ?', [id], (err) => {
-    if (err) return res.redirect('/admin?error=' + encodeURIComponent('Delete failed'));
-    res.redirect('/admin?warning=' + encodeURIComponent('Question deleted'));
+  const raw = req.body.ids ? (Array.isArray(req.body.ids) ? req.body.ids : [req.body.ids]) : (req.body.id ? [req.body.id] : []);
+  const ids = raw.map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
+  if (!ids.length) return res.redirect('/admin/questions?warning=' + encodeURIComponent('No questions selected'));
+  const qSc = scopeClause(req, 'created_by');
+  const placeholders = ids.map(() => '?').join(',');
+  const sql = 'DELETE FROM questions WHERE id IN (' + placeholders + ')' + qSc.sql;
+  db.run(sql, [...ids, ...qSc.params], (err) => {
+    if (err) return res.redirect('/admin/questions?error=' + encodeURIComponent('Delete failed'));
+    res.redirect('/admin/questions?success=' + encodeURIComponent(ids.length + ' question(s) deleted'));
   });
 });
 
