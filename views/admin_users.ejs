@@ -23,6 +23,7 @@
       <a href="/admin/exams/create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"></polyline></svg> Create Exam</a>
       <a href="/admin/lessons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg> Lessons</a>
       <a href="/admin/assignments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg> Assignments</a>
+      <a href="/admin/messages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Messages</a>
       <a href="/admin/scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg> Scores</a>
       <a href="/admin/users" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> Users</a>
       <a href="/admin/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 13 7a1.65 1.65 0 0 0 1 1.51V9a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .33 1.82l-.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 15a1.65 1.65 0 0 0 1 1.51V17a2 2 0 0 1 4 0v-.09a1.65 1.65 0 0 0 1-1.51z"></path></svg> Settings</a>
@@ -154,6 +155,9 @@
                 <td class="cell-muted" style="font-size:var(--text-xs);"><%= u.created_at %></td>
                 <td class="text-right">
                   <div class="actions">
+                    <% if (u.role !== 'admin') { %>
+                    <a class="btn btn-edit btn-sm" href="/admin/messages/<%= u.id %>" title="Send <%= u.full_name || u.username %> a private message">Message</a>
+                    <% } %>
                     <button class="btn btn-view btn-sm" onclick="openView(<%= u.id %>)">View</button>
                     <button class="btn btn-edit btn-sm" onclick="openEdit(<%= u.id %>)">Edit</button>
                     <button class="btn btn-reset btn-sm" onclick="openReset(<%= u.id %>, '<%= u.username %>')">Reset</button>
@@ -166,11 +170,8 @@
                     <form action="/admin/users/delete" method="post" class="d-inline" data-message="Delete <%= u.username %>?<br><small>Their account and all exam records will be permanently removed.</small>" data-confirm-text="Delete" data-danger="true">
                       <input type="hidden" name="id" value="<%= u.id %>">
                       <button class="btn btn-danger btn-sm" type="submit">Delete</button>
-</form>
-          <form action="/admin/users/cleanup-duplicates" method="post" class="d-inline" onsubmit="return confirm('This will delete duplicate student accounts (keeping the oldest for each name). Continue?');">
-            <button type="submit" class="btn btn-warning" style="padding:0.6rem 1rem;">Cleanup Duplicates</button>
-          </form>
-        </div>
+                    </form>
+                  </div>
                 </td>
               </tr>
               <!-- View Modal Data -->
@@ -261,7 +262,11 @@
       </div>
       <div class="card-footer" style="justify-content: space-between;">
         <span class="meta">Page <%= page %> of <%= totalPages %> • <%= total %> users • 10 per page</span>
-        <nav class="pagination" aria-label="Pagination">
+        <span style="display:flex; gap:var(--space-3); align-items:center;">
+          <form action="/admin/users/cleanup-duplicates" method="post" class="d-inline" onsubmit="return confirm('This will delete duplicate student accounts (keeping the oldest for each name). Continue?');">
+            <button type="submit" class="btn btn-warning" style="padding:0.6rem 1rem;">Cleanup Duplicates</button>
+          </form>
+          <nav class="pagination" aria-label="Pagination">
           <% if (page > 1) { %><a href="/admin/users?page=<%= page-1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" class="prev">‹ Prev</a><% } %>
           <% for(let p=1; p<=totalPages; p++){ %>
             <% if(p===page){ %><span class="current"><%= p %></span>
@@ -270,6 +275,7 @@
           <% } %>
           <% if (page < totalPages) { %><a href="/admin/users?page=<%= page+1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" class="next">Next ›</a><% } %>
         </nav>
+        </span>
       </div>
     </div>
     <p class="hint">Tip: Reset creates a <b>temporary password</b> — share it with the user. They login with it, then go to <b>Change Password</b> to make a new one.</p>

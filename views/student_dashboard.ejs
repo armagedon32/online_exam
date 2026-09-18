@@ -109,6 +109,28 @@
                 </div>
               </div>
             </article>
+          <% } else if (exam.closed) { %>
+            <article class="card" style="opacity: 0.7; background: var(--bg-tertiary); border-color: transparent;">
+              <div class="card-body">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3);">
+                  <h3 style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); flex: 1; margin: 0;"><%= exam.title %></h3>
+                  <span class="badge badge-danger">Closed</span>
+                </div>
+                <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+                  <span class="badge badge-success"><%= exam.subject %></span>
+                  <% if (exam.semester) { %><span class="badge badge-primary"><%= exam.semester %></span><% } %>
+                  <% if (exam.period) { %><span class="badge badge-warning"><%= exam.period %></span><% } %>
+                </p>
+                <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-muted);">
+                  <%= exam.instructor ? 'Instructor: ' + exam.instructor + '<br>' : '' %>
+                  <% if (exam.due_date) { %>Due: <strong><%= exam.due_date %></strong> (until 11:59 PM)<% } else { %>No due date<% } %>
+                </p>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
+                  <span style="font-size: var(--text-sm); color: var(--text-muted);"><%= exam.duration %> min</span>
+                  <span class="btn btn-sm" style="cursor: not-allowed; opacity: 0.8;">Not Available</span>
+                </div>
+              </div>
+            </article>
           <% } else { %>
             <a href="/student/exam/<%= exam.id %>" class="card" style="text-decoration: none; color: inherit; display: block; transition: all var(--transition-base);">
               <div class="card-body">
@@ -121,6 +143,9 @@
                 <% if (exam.instructor) { %>
                   <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-muted);">Instructor: <%= exam.instructor %></p>
                 <% } %>
+                <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-muted);">
+                  <% if (exam.due_date) { %>Due: <strong><%= exam.due_date %></strong> (until 11:59 PM)<% } else { %>No due date<% } %>
+                </p>
                 <div style="display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
                   <span style="font-size: var(--text-sm); color: var(--text-muted);"><%= exam.duration %> min</span>
                   <span class="btn btn-primary btn-sm" style="padding: var(--space-2) var(--space-4);">Take Exam →</span>

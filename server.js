@@ -173,6 +173,9 @@ db.serialize(() => {
   db.run("ALTER TABLE assignments ADD COLUMN require_answer INTEGER DEFAULT 0", () => {});
   db.run("ALTER TABLE assignments ADD COLUMN require_video INTEGER DEFAULT 0", () => {});
   db.run("ALTER TABLE assignments ADD COLUMN require_file INTEGER DEFAULT 0", () => {});
+  // migration: exam due date + enable/disable flag
+  db.run("ALTER TABLE exams ADD COLUMN due_date TEXT", () => {});
+  db.run("ALTER TABLE exams ADD COLUMN active INTEGER DEFAULT 1", () => {});
 
   // notifications table (bell) — created if not exists
   db.run(`
@@ -278,6 +281,13 @@ function isPastDue(dueDate) {
   const due = new Date(dueDate + 'T23:59:59');
   return !isNaN(due) && due < new Date();
 }
+// True when students can no longer take an exam (disabled by admin OR past due date)
+function examLocked(exam) {
+  if (exam && Number(exam.active) === 0) return true;
+  if (exam && exam.due_date && isPastDue(exam.due_date)) return true;
+  return false;
+}
+function examOpen(exam) { return !examLocked(exam); }
 // Get admin row by signup token (or super admin if token missing/generic)
 function findByToken(token, cb) {
   if (!token) return cb(null, null);
@@ -537,7 +547,7 @@ app.get('/admin/exams/create', isLoggedIn, isAdmin, (req, res) => {
 });
 
 app.post('/admin/exams/create', isLoggedIn, isAdmin, (req, res) => {
-  const { title, subject, semester, period, instruction, duration, instructor, questionIds } = req.body;
+  const { title, subject, semester, period, instruction, duration, instructor, due_date, questionIds } = req.body;
   if (!title || !subject || !semester || !period) return res.redirect('/admin/exams/create?error=' + encodeURIComponent('Title, Subject, Semester and Period required'));
   const rawQ = questionIds ? (Array.isArray(questionIds) ? questionIds : [questionIds]) : [];
   const qIds = rawQ.map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
@@ -553,8 +563,8 @@ app.post('/admin/exams/create', isLoggedIn, isAdmin, (req, res) => {
       if (errQ) return res.redirect('/admin/exams/create?error=' + encodeURIComponent('Failed to validate questions'));
       if (!qRow || qRow[0].cnt !== qIds.length) return res.redirect('/admin/exams/create?error=' + encodeURIComponent('One or more selected questions are invalid or not yours'));
       db.run(
-        'INSERT INTO exams (title, subject, semester, period, instruction, duration, instructor, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [title, subject, semester, period, instruction || null, duration, instructor, req.session.userId],
+        'INSERT INTO exams (title, subject, semester, period, instruction, duration, instructor, due_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [title, subject, semester, period, instruction || null, duration, instructor, (due_date || '').trim() || null, req.session.userId],
         function(err) {
           if (err) return res.redirect('/admin/exams/create?error=' + encodeURIComponent('Failed to create exam'));
           const examId = this.lastID;
@@ -568,6 +578,51 @@ app.post('/admin/exams/create', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // ===== STUDENT ROUTES =====
+
+// Admin: Exams manager - list all exams with status + reopen/disable actions
+app.get('/admin/exams', isLoggedIn, isAdmin, (req, res) => {
+  const sc = scopeClause(req, 'created_by', 'e');
+  db.all('SELECT e.*, (SELECT COUNT(*) FROM exam_questions q WHERE q.exam_id = e.id) as question_count FROM exams e WHERE 1=1' + sc.sql + ' ORDER BY e.created_at DESC', sc.params, (err, exams) => {
+    if (err) return res.status(500).send('Database error');
+    (exams || []).forEach(e => { e.closed = examLocked(e); });
+    res.render('admin_exams', { exams: exams || [], user: req.session });
+  });
+});
+
+// Admin: Reopen a closed/disabled exam - extends due date (default +7 days) and re-enables it
+app.post('/admin/exams/reopen', isLoggedIn, isAdmin, (req, res) => {
+  const examId = parseInt(req.body.id, 10);
+  const days = parseInt(req.body.days, 10) || 7;
+  if (!Number.isInteger(examId) || examId <= 0 || days < 1 || days > 365) return res.redirect('/admin/exams?error=' + encodeURIComponent('Invalid exam or number of days'));
+  const sc = scopeClause(req, 'created_by', 'e');
+  db.get('SELECT e.id, e.title FROM exams e WHERE e.id = ?' + sc.sql, [examId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/exams?error=' + encodeURIComponent('Exam not found'));
+    const newDue = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    db.run('UPDATE exams SET due_date = ?, active = 1 WHERE id = ?', [newDue, examId], (err2) => {
+      if (err2) return res.redirect('/admin/exams?error=' + encodeURIComponent('Failed to reopen exam'));
+      notifyAdminStudents(req.session.userId, 'exam', 'Exam Reopened', 'The exam "' + row.title + '" is open again. Due date: ' + newDue + ' (until 11:59 PM).', '/student');
+      res.redirect('/admin/exams?success=' + encodeURIComponent('Exam "' + row.title + '" reopened for ' + days + ' day(s), due ' + newDue));
+    });
+  });
+});
+
+// Admin: Disable/Enable an exam immediately (blocks students right away)
+app.post('/admin/exams/set-active', isLoggedIn, isAdmin, (req, res) => {
+  const examId = parseInt(req.body.id, 10);
+  const val = req.body.active === '0' ? 0 : 1;
+  if (!Number.isInteger(examId) || examId <= 0) return res.redirect('/admin/exams?error=' + encodeURIComponent('Invalid exam'));
+  const sc = scopeClause(req, 'created_by', 'e');
+  db.get('SELECT e.id, e.title FROM exams e WHERE e.id = ?' + sc.sql, [examId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/exams?error=' + encodeURIComponent('Exam not found'));
+    db.run('UPDATE exams SET active = ? WHERE id = ?', [val, examId], (err2) => {
+      if (err2) return res.redirect('/admin/exams?error=' + encodeURIComponent('Failed to update exam'));
+      if (val === 0) {
+        notifyAdminStudents(req.session.userId, 'exam', 'Exam Closed', 'The exam "' + row.title + '" has been closed by your instructor.', '/student');
+      }
+      res.redirect('/admin/exams?success=' + encodeURIComponent(val === 0 ? ('Exam "' + row.title + '" disabled') : ('Exam "' + row.title + '" enabled')));
+    });
+  });
+});
 
 // Student dashboard - list exams filtered by student's admin (referrer) + subjects, show taken + score
 app.get('/student', isLoggedIn, (req, res) => {
@@ -583,6 +638,7 @@ app.get('/student', isLoggedIn, (req, res) => {
         (myScores||[]).forEach(s => { scoreMap[s.exam_id] = s; takenSet.add(String(s.exam_id)); });
         let filtered = allExams;
         if (mySubjects && mySubjects.length) filtered = allExams.filter(e => mySubjects.includes(e.subject));
+        filtered.forEach(e => { e.closed = examLocked(e); });
         res.render('student_dashboard', { exams: filtered, allExams, user: req.session, mySubjects, scoreMap, takenSet });
       });
     });
@@ -604,6 +660,12 @@ app.get('/student/exam/:examId', isLoggedIn, (req, res) => {
       }
       if (mySubjects.length && !mySubjects.includes(exam.subject)) {
         return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + exam.subject + '</b>.</p><p>Your subjects: ' + mySubjects.join(', ') + '</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+      }
+      if (examLocked(exam)) {
+        let why = 'This exam is closed by your instructor.';
+        if (Number(exam.active) === 0) why = 'This exam has been disabled by your instructor.';
+        else if (exam.due_date) why = 'This exam closed on <b>' + exam.due_date + '</b> (11:59 PM). Ask your instructor to reopen it if needed.';
+        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center; background:white; padding:2rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"><h3>Exam Closed</h3><p>' + why + '</p><a href="/student" style="display:inline-block; margin-top:1rem; padding:0.6rem 1rem; background:#6366f1; color:white; border-radius:8px; text-decoration:none;">Back to Dashboard</a></div>');
       }
       db.get('SELECT score FROM scores WHERE student_id=? AND exam_id=?', [req.session.userId, examId], (err3, taken) => {
         if (taken) {
@@ -632,24 +694,29 @@ app.post('/student/exam/:examId/submit', isLoggedIn, (req, res) => {
   const examId = req.params.examId;
   const { answers } = req.body;
 
-  db.all(`SELECT q.id, q.correct_answer FROM questions q JOIN exam_questions eq ON q.id = eq.question_id WHERE eq.exam_id = ?`, [examId], (err, questions) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
+  db.get('SELECT * FROM exams WHERE id = ?', [examId], (err0, examRow) => {
+    if (err0 || !examRow) return res.status(500).json({ error: 'Exam not found' });
+    if (examLocked(examRow)) return res.status(403).json({ error: 'This exam is closed and can no longer be submitted.' });
 
-    let score = 0;
-    const total = questions.length;
-    questions.forEach(q => {
-      const selected = answers && answers[q.id] !== undefined ? answers[q.id] : -1;
-      if (String(selected) === String(q.correct_answer)) score++;
+    db.all(`SELECT q.id, q.correct_answer FROM questions q JOIN exam_questions eq ON q.id = eq.question_id WHERE eq.exam_id = ?`, [examId], (err, questions) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+
+      let score = 0;
+      const total = questions.length;
+      questions.forEach(q => {
+        const selected = answers && answers[q.id] !== undefined ? answers[q.id] : -1;
+        if (String(selected) === String(q.correct_answer)) score++;
+      });
+
+      db.run(
+        'INSERT INTO scores (student_id, exam_id, score) VALUES (?, ?, ?)',
+        [req.session.userId, examId, score],
+        (err) => {
+          if (err) return res.status(500).json({ error: 'Database error' });
+          res.json({ redirect: `/student/exam/${examId}/result` });
+        }
+      );
     });
-
-    db.run(
-      'INSERT INTO scores (student_id, exam_id, score) VALUES (?, ?, ?)',
-      [req.session.userId, examId, score],
-      (err) => {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        res.json({ redirect: `/student/exam/${examId}/result` });
-      }
-    );
   });
 });
 
