@@ -866,10 +866,15 @@ app.get('/student/quiz/:quizId/result', isLoggedIn, (req, res) => {
 // Student dashboard - list exams filtered by student's admin (referrer) + subjects, show taken + score
 app.get('/student', isLoggedIn, (req, res) => {
   db.get('SELECT subjects, full_name, course, year_level, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    if (err) return res.status(500).send('Database error');
     let mySubjects = [];
     try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : (req.session.subjects || []); } catch(e){ mySubjects = []; }
     // Student only sees exams owned by the admin who referred them (their instructor)
-    const ownerId = (u && u.referrer_id) ? u.referrer_id : 1;
+    const ownerId = (u && u.referrer_id) ? u.referrer_id : null;
+    if (!ownerId) {
+      // No referring admin - show empty dashboard instead of error
+      return res.render('student_dashboard', { exams: [], allExams: [], user: req.session, mySubjects, scoreMap: {}, takenSet: new Set(), quizzes: [], quizScoreMap: {}, quizTakenSet: new Set() });
+    }
     db.all('SELECT * FROM exams WHERE created_by = ? ORDER BY created_at DESC', [ownerId], (err2, allExams) => {
       if (err2) return res.status(500).send('Database error');
       db.all('SELECT exam_id, score, completed_at FROM scores WHERE student_id=?', [req.session.userId], (err3, myScores) => {

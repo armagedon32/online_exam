@@ -85,14 +85,28 @@
       </form>
     </div>
   </div>
-  <script>
+<script>
     const qs = new URLSearchParams(location.search);
     function showAlert(id, textId, msg){ if(msg){ document.getElementById(textId).textContent = decodeURIComponent(msg.replace(/\+/g,' ')); document.getElementById(id).classList.add('show'); setTimeout(()=>document.getElementById(id).classList.remove('show'), 4000); } }
     showAlert('alertSuccess','alertSuccessText', qs.get('success'));
     showAlert('alertError','alertErrorText', qs.get('error'));
     showAlert('alertWarning','alertWarningText', qs.get('warning'));
     const form = document.getElementById('qForm');
+    function sanitize(str) {
+      if (!str) return '';
+      return str
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/[\u2026]/g, '...')
+        .replace(/[\u00A0]/g, ' ')
+        .replace(/[\u200B-\u200F]/g, '')
+        .replace(/[\uFEFF]/g, '')
+        .trim();
+    }
     form.addEventListener('submit', e => {
+      const fields = ['subject','question','option_a','option_b','option_c','option_d'];
+      fields.forEach(f => { if (form[f]) form[f].value = sanitize(form[f].value); });
       const v = form.correct_answer.value.trim().toUpperCase();
       if (!['A','B','C','D'].includes(v)) {
         document.getElementById('alertErrorText').textContent = 'Correct answer must be A, B, C, or D';
