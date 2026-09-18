@@ -567,7 +567,7 @@ app.get('/admin/exams/create', isLoggedIn, isAdmin, (req, res) => {
   getAdminSubjects(req, (err, subjects) => {
     if (err) subjects = [];
     const qSc = scopeClause(req, 'created_by');
-    db.all('SELECT * FROM questions WHERE 1=1' + qSc.sql + ' ORDER BY subject, created_at DESC LIMIT 100', qSc.params, (err2, questions) => {
+    db.all('SELECT * FROM questions WHERE 1=1' + qSc.sql + ' ORDER BY created_at DESC LIMIT 200', qSc.params, (err2, questions) => {
       if (err2) return res.status(500).send('Database error');
         res.render('create_exam', { questions: questions || [], subjects: subjects || [], user: req.session });
     });
@@ -710,7 +710,7 @@ app.get('/admin/quizzes/create', isLoggedIn, isAdmin, (req, res) => {
   getAdminSubjects(req, (err, subjects) => {
     if (err) subjects = [];
     const qSc = scopeClause(req, 'created_by');
-    db.all('SELECT * FROM questions WHERE 1=1' + qSc.sql + ' ORDER BY subject, created_at DESC LIMIT 100', qSc.params, (err2, questions) => {
+    db.all('SELECT * FROM questions WHERE 1=1' + qSc.sql + ' ORDER BY created_at DESC LIMIT 200', qSc.params, (err2, questions) => {
       if (err2) return res.status(500).send('Database error');
       res.render('create_quiz', { questions: questions || [], subjects: subjects || [], user: req.session });
     });
