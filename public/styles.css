@@ -895,6 +895,87 @@ label { display: block; font-size: var(--text-sm); font-weight: var(--font-semib
   .btn-prev, .btn-next, .btn-submit { padding: var(--space-3) var(--space-4); }
 }
 
+/* --------------------------------------------------------------------------
+   SHARED EXAM + QUIZ SHELL — mobile & touch refinements
+   Both pages use the same .exam-* shell, so these rules cover both.
+   -------------------------------------------------------------------------- */
+
+/* Dynamic viewport height: mobile browser bars no longer clip the page */
+.exam-shell { min-height: 100dvh; }
+
+/* Long question / choice text must never overflow its card */
+.question-text, .option, .option-label { overflow-wrap: anywhere; }
+.option-label { min-width: 0; }
+.option-marker { flex-shrink: 0; }
+
+/* Snappier taps: no 300ms delay, no accidental double-tap zoom */
+.option, .nav-btn, .nav-dot, .review-dot, .timeup-btn, .close-modal { touch-action: manipulation; }
+
+/* Sticky bottom bar clears the phone home-indicator area */
+.slide-nav { padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)); }
+
+/* Touch devices: neutralise sticky :hover states (they stay "stuck" after a tap) */
+@media (hover: none) {
+  .option:hover { background: var(--bg-secondary); border-color: var(--border-light); color: var(--text-secondary); transform: none; }
+  .option.selected:hover { background: var(--color-primary-light); border-color: var(--color-primary); color: var(--text-primary); }
+  .nav-dot:hover { transform: none; box-shadow: none; }
+  .nav-btn:not(:disabled):hover { transform: none; box-shadow: var(--shadow-xs); }
+  .review-dot:hover { transform: none; box-shadow: none; }
+}
+
+@media (max-width: 768px) {
+  /* Title on its own row; timer right-aligned underneath, still large enough to read */
+  .exam-header { gap: var(--space-2); padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0px)); }
+  .exam-header-left { flex: 1 1 100%; }
+  .exam-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+  .exam-timer { margin-left: auto; }
+  .exam-main { padding: var(--space-4) var(--space-3); }
+  .question-card { padding: var(--space-4); border-radius: var(--radius-lg); }
+  .option { min-height: 52px; }
+  .option input { width: 22px; height: 22px; margin-right: var(--space-3); }
+  .nav-btn { min-height: 48px; }
+  .slide-nav { padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); }
+  .review-modal .modal-card { padding: var(--space-5); }
+  .review-actions { flex-direction: column-reverse; }
+  .review-actions .btn { width: 100%; }
+  .timeup-btn { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .timer-display { font-size: 1.45rem; min-width: 84px; }
+  .exam-subject { font-size: var(--text-xs); }
+  .q-count { padding: 3px 10px; }
+  .option { min-height: 48px; }
+  .review-grid { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .review-stats { gap: var(--space-2); }
+  .review-stat { padding: 4px 10px; font-size: var(--text-xs); }
+  .timeup-card { padding: var(--space-6) var(--space-4); }
+  .timeup-icon { width: 56px; height: 56px; margin-bottom: var(--space-4); }
+  .timeup-title { font-size: var(--text-2xl); }
+  .timeup-message { font-size: var(--text-base); margin-bottom: var(--space-6); }
+}
+
+/* Very small phones (320px / foldable cover screens) */
+@media (max-width: 360px) {
+  .nav-dot { width: 34px; height: 34px; }
+  .review-grid { grid-template-columns: repeat(4, 1fr); }
+  .timer-display { font-size: 1.3rem; min-width: 76px; padding: 4px 10px; }
+  .question-card { padding: var(--space-3); }
+}
+
+/* Landscape phones: compact header, nav buttons back on a single row */
+@media (max-height: 520px) and (orientation: landscape) {
+  .exam-header { position: static; padding: var(--space-2) var(--space-4); }
+  .exam-header-left { flex: 1 1 auto; }
+  .exam-timer { margin-left: 0; }
+  .exam-title { white-space: nowrap; display: block; }
+  .timer-display { font-size: 1.35rem; min-width: 78px; padding: 4px 10px; }
+  .exam-main { padding: var(--space-3); }
+  .nav-dots { display: none; }
+  .slide-nav { flex-direction: row; padding-bottom: var(--space-2); }
+  .nav-btn { width: auto; min-width: 0; min-height: 42px; }
+}
+
 /* ==========================================================================
    UI NOTIFICATIONS — Toasts & Confirm Dialog
    ========================================================================== */

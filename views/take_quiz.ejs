@@ -7,27 +7,27 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=20260831">
+  <link rel="stylesheet" href="/styles.css?v=20260919">
 </head>
 <body>
-  <div class="quiz-shell">
+  <div class="exam-shell">
     <!-- Header with Timer & Progress -->
-    <header class="quiz-header" role="banner">
-      <div class="quiz-header-left">
-        <h1 class="quiz-title"><%= quizTitle %></h1>
-        <span class="quiz-subject"><%= subjectName %></span>
+    <header class="exam-header" role="banner">
+      <div class="exam-header-left">
+        <h1 class="exam-title"><%= quizTitle %></h1>
+        <span class="exam-subject"><%= subjectName %></span>
       </div>
-      <div class="quiz-timer" aria-live="polite" aria-atomic="true">
+      <div class="exam-timer" aria-live="polite" aria-atomic="true">
         <div class="timer-display" id="timerDisplay">--:--</div>
         <div class="timer-label">Time Remaining</div>
       </div>
     </header>
-    <div class="quiz-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Quiz progress">
-      <div class="quiz-progress-fill" id="progressFill" style="width: 0%"></div>
+    <div class="exam-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Quiz progress">
+      <div class="exam-progress-fill" id="progressFill" style="width: 0%"></div>
     </div>
 
     <!-- Main Quiz Area -->
-    <main class="quiz-main" role="main">
+    <main class="exam-main" role="main">
       <div class="slides-container" id="slidesContainer">
         <!-- Slides rendered by JS -->
       </div>
