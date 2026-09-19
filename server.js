@@ -887,16 +887,20 @@ app.post('/student/quiz/:quizId/submit', isLoggedIn, (req, res) => {
       db.get('SELECT * FROM quiz_scores WHERE student_id=? AND quiz_id=?', [req.session.userId, quizId], (err3, taken) => {
         if (err3) return res.status(500).send('Database error');
         if (taken) return res.status(403).send('You already took this quiz');
-        const qIds = (req.body.questionId ? (Array.isArray(req.body.questionId) ? req.body.questionId : [req.body.questionId]) : []).map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
-        if (!qIds.length) return res.status(400).send('No answers submitted');
-        const placeholders = qIds.map(() => '?').join(',');
-        db.all('SELECT id, correct_answer FROM questions WHERE id IN (' + placeholders + ') AND created_by IN (?)', qIds.concat([ownerId]), (err4, qrows) => {
+        // The take_quiz page posts JSON exactly like the exam page: { answers: { "<questionId>": "A" | -1 } }
+        const { answers } = req.body;
+        if (!answers || !Object.keys(answers).length) return res.status(400).send('No answers submitted');
+        db.all('SELECT q.id, q.correct_answer FROM questions q JOIN quiz_questions zq ON q.id = zq.question_id WHERE zq.quiz_id = ?', [quizId], (err4, qrows) => {
           if (err4) return res.status(500).send('Database error');
+          if (!qrows.length) return res.status(400).send('This quiz has no questions');
           let score = 0;
-          qrows.forEach(qr => { const sel = req.body['a_' + qr.id]; if (sel && String(sel) === String(qr.correct_answer)) score++; });
+          qrows.forEach(qr => {
+            const selected = answers[qr.id] !== undefined ? answers[qr.id] : -1;
+            if (String(selected) === String(qr.correct_answer)) score++;
+          });
           db.run('INSERT INTO quiz_scores (student_id, quiz_id, score) VALUES (?, ?, ?)', [req.session.userId, quizId, score], (err5) => {
             if (err5) return res.status(500).send('Database error');
-            res.json({ redirect: '/student/quiz/' + quizId + '/result' });
+            res.json({ redirect: '/student/quiz/' + quizId + '/result', score, total: qrows.length });
           });
         });
       });
