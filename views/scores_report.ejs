@@ -67,8 +67,9 @@
 </head>
 <body>
   <div class="report-page">
+    <% const curSubject = (typeof subject !== 'undefined' && subject) ? subject : ''; %>
     <div class="print-actions no-print">
-      <a href="/admin/scores" class="btn btn-ghost">← Scores</a>
+      <a href="/admin/scores<%= curSubject ? '?subject=' + encodeURIComponent(curSubject) : '' %>" class="btn btn-ghost">← Scores</a>
       <button type="button" class="btn btn-primary" onclick="window.print()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
         Print Report
@@ -82,7 +83,7 @@
         </div>
         <div>
           <h1>Scores Report</h1>
-          <p>All students who took exams — grouped by SET &amp; Year</p>
+          <p>All students who took exams — grouped by SET &amp; Year<% if (curSubject) { %> — Subject: <strong><%= curSubject %></strong><% } %></p>
         </div>
         <div class="report-meta">
           Generated: <%= generatedAt.toLocaleString() %><br>
@@ -100,7 +101,7 @@
         <div class="report-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           <h3 style="color: var(--text-primary);">No records to print</h3>
-          <p>No students have taken any exams yet.</p>
+          <p>No students have taken any exams<%= curSubject ? ' for ' + curSubject : '' %> yet.</p>
         </div>
       <% } %>
 

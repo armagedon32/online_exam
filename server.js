@@ -927,28 +927,32 @@ app.get('/student/quiz/:quizId/result', isLoggedIn, (req, res) => {
   });
 });
 
-// Quiz scores (admin) - taken quizzes with score, search + pagination (scoped to this admin's quizzes)
+// Quiz scores (admin) - taken quizzes with score, subject filter + search + pagination (scoped to this admin's quizzes)
 app.get('/admin/quiz-scores', isLoggedIn, isAdmin, (req, res) => {
   const search = (req.query.search || '').trim();
+  const subject = (req.query.subject || '').trim();
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = 10;
   const offset = (page - 1) * limit;
   const like = '%' + search + '%';
   const zSc = scopeClause(req, 'created_by', 'z');
   const baseWhere = ' WHERE 1=1' + zSc.sql;
+  const subjectWhere = subject ? ' AND z.subject = ?' : '';
   const searchWhere = search ? ' AND (u.full_name LIKE ? OR u.username LIKE ? OR u.course LIKE ? OR u.year_level LIKE ? OR u.set_group LIKE ? OR z.title LIKE ? OR z.subject LIKE ? OR z.semester LIKE ? OR z.period LIKE ? OR qs.score LIKE ?)' : '';
   const searchParams = search ? [like, like, like, like, like, like, like, like, like, like] : [];
-  const where = baseWhere + searchWhere;
-  const params = zSc.params.concat(searchParams);
-  db.get('SELECT COUNT(*) as cnt FROM quiz_scores qs JOIN users u ON qs.student_id = u.id JOIN quizzes z ON qs.quiz_id = z.id ' + where, params, (err, cntRow) => {
-    if (err) return res.status(500).send('Database error');
-    const total = cntRow ? cntRow.cnt : 0;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    const query = 'SELECT qs.id as score_id, qs.score, qs.completed_at, qs.quiz_id, qs.student_id, u.username, u.full_name, u.course, u.year_level, u.set_group, z.title as quiz_title, z.subject, z.semester, z.period, (SELECT COUNT(*) FROM quiz_questions zq WHERE zq.quiz_id = z.id) as question_count FROM quiz_scores qs JOIN users u ON qs.student_id = u.id JOIN quizzes z ON qs.quiz_id = z.id ' + where + ' ORDER BY qs.completed_at DESC LIMIT ? OFFSET ?';
-    const qParams = params.concat([limit, offset]);
-    db.all(query, qParams, (err2, scores) => {
-      if (err2) return res.status(500).send('Database error');
-      res.render('quiz_scores', { scores: scores || [], search, page, totalPages, total, user: req.session });
+  const where = baseWhere + subjectWhere + searchWhere;
+  const params = zSc.params.concat(subject ? [subject] : []).concat(searchParams);
+  getRecordedSubjects(req, 'quiz', (errS, subjectOptions) => {
+    db.get('SELECT COUNT(*) as cnt FROM quiz_scores qs JOIN users u ON qs.student_id = u.id JOIN quizzes z ON qs.quiz_id = z.id ' + where, params, (err, cntRow) => {
+      if (err) return res.status(500).send('Database error');
+      const total = cntRow ? cntRow.cnt : 0;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const query = 'SELECT qs.id as score_id, qs.score, qs.completed_at, qs.quiz_id, qs.student_id, u.username, u.full_name, u.course, u.year_level, u.set_group, z.title as quiz_title, z.subject, z.semester, z.period, (SELECT COUNT(*) FROM quiz_questions zq WHERE zq.quiz_id = z.id) as question_count FROM quiz_scores qs JOIN users u ON qs.student_id = u.id JOIN quizzes z ON qs.quiz_id = z.id ' + where + ' ORDER BY qs.completed_at DESC LIMIT ? OFFSET ?';
+      const qParams = params.concat([limit, offset]);
+      db.all(query, qParams, (err2, scores) => {
+        if (err2) return res.status(500).send('Database error');
+        res.render('quiz_scores', { scores: scores || [], search, subject, subjectOptions: subjectOptions || [], page, totalPages, total, user: req.session });
+      });
     });
   });
 });
@@ -956,13 +960,15 @@ app.get('/admin/quiz-scores', isLoggedIn, isAdmin, (req, res) => {
 // Delete/reset a quiz score so that student can retake the quiz (scoped to this admin's quizzes)
 app.post('/admin/quiz-scores/delete', isLoggedIn, isAdmin, (req, res) => {
   const { id } = req.body;
+  const backSubject = (req.body.subject || '').trim();
+  const suffix = backSubject ? '&subject=' + encodeURIComponent(backSubject) : '';
   const zSc = scopeClause(req, 'created_by', 'z');
   db.get('SELECT qs.student_id, qs.quiz_id, z.title as quiz_title FROM quiz_scores qs JOIN quizzes z ON qs.quiz_id = z.id WHERE qs.id = ?' + zSc.sql, [id].concat(zSc.params), (err, row) => {
-    if (err || !row) return res.redirect('/admin/quiz-scores?error=' + encodeURIComponent('Record not found or not yours'));
+    if (err || !row) return res.redirect('/admin/quiz-scores?error=' + encodeURIComponent('Record not found or not yours') + suffix);
     db.run('DELETE FROM quiz_scores WHERE id=?', [id], (err2) => {
-      if (err2) return res.redirect('/admin/quiz-scores?error=' + encodeURIComponent('Reset failed'));
+      if (err2) return res.redirect('/admin/quiz-scores?error=' + encodeURIComponent('Reset failed') + suffix);
       notifyUser(row.student_id, 'quiz', 'Quiz Reset', 'Your instructor reset your attempt for "' + row.quiz_title + '". You can take it again.', '/student');
-      res.redirect('/admin/quiz-scores?success=' + encodeURIComponent('Quiz attempt reset — student can retake "' + row.quiz_title + '" now'));
+      res.redirect('/admin/quiz-scores?success=' + encodeURIComponent('Quiz attempt reset — student can retake "' + row.quiz_title + '" now') + suffix);
     });
   });
 });
@@ -1103,136 +1109,201 @@ app.get('/student/exam/:examId/result', isLoggedIn, (req, res) => {
   });
 });
 
-// View scores (admin) - with search & pagination 10 (scoped to admin's exams)
+// Distinct subjects that already have recorded results — feeds the subject filter dropdown
+// kind: 'exam' (scores/exams) or 'quiz' (quiz_scores/quizzes)
+function getRecordedSubjects(req, kind, cb) {
+  const t = kind === 'quiz'
+    ? { s: 'quiz_scores', fk: 'quiz_id', parent: 'quizzes', alias: 'z' }
+    : { s: 'scores', fk: 'exam_id', parent: 'exams', alias: 'e' };
+  const sc = scopeClause(req, 'created_by', t.alias);
+  db.all(`SELECT DISTINCT ${t.alias}.subject AS subject FROM ${t.s} s JOIN ${t.parent} ${t.alias} ON s.${t.fk} = ${t.alias}.id WHERE ${t.alias}.subject IS NOT NULL AND TRIM(${t.alias}.subject) <> ''` + sc.sql + ` ORDER BY ${t.alias}.subject`, sc.params, (err, rows) => {
+    cb(err, (rows || []).map(r => r.subject));
+  });
+}
+
+// View scores (admin) - with search, subject filter & pagination 10 (scoped to admin's exams)
 app.get('/admin/scores', isLoggedIn, isAdmin, (req, res) => {
   const search = (req.query.search || '').trim();
+  const subject = (req.query.subject || '').trim();
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = 10;
   const offset = (page - 1) * limit;
   const like = '%' + search + '%';
   const eSc = scopeClause(req, 'created_by', 'e');
   const baseWhere = ' WHERE 1=1' + eSc.sql;
+  const subjectWhere = subject ? ' AND e.subject = ?' : '';
   const searchWhere = search ? ' AND (u.full_name LIKE ? OR u.username LIKE ? OR u.course LIKE ? OR u.year_level LIKE ? OR u.set_group LIKE ? OR e.title LIKE ? OR e.subject LIKE ? OR e.semester LIKE ? OR e.period LIKE ? OR s.score LIKE ?)' : '';
   const searchParams = search ? [like,like,like,like,like,like,like,like,like,like] : [];
-  const where = baseWhere + searchWhere;
-  const params = eSc.params.concat(searchParams);
-  db.get('SELECT COUNT(*) as cnt FROM scores s JOIN users u ON s.student_id = u.id JOIN exams e ON s.exam_id = e.id ' + where, params, (err, cntRow) => {
-    const total = cntRow ? cntRow.cnt : 0;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    const query = 'SELECT s.id as score_id, s.score, s.completed_at, s.exam_id, s.student_id, u.username, u.full_name, u.course, u.year_level, u.set_group, e.title as exam_title, e.subject, e.semester, e.period FROM scores s JOIN users u ON s.student_id = u.id JOIN exams e ON s.exam_id = e.id ' + where + ' ORDER BY s.completed_at DESC LIMIT ? OFFSET ?';
-    const qParams = params.concat([limit, offset]);
-    db.all(query, qParams, (err2, scores) => {
-      if (err2) return res.status(500).send('Database error');
-      res.render('scores', { scores, search, page, totalPages, total, user: req.session });
+  const where = baseWhere + subjectWhere + searchWhere;
+  const params = eSc.params.concat(subject ? [subject] : []).concat(searchParams);
+  getRecordedSubjects(req, 'exam', (errS, subjectOptions) => {
+    db.get('SELECT COUNT(*) as cnt FROM scores s JOIN users u ON s.student_id = u.id JOIN exams e ON s.exam_id = e.id ' + where, params, (err, cntRow) => {
+      if (err) return res.status(500).send('Database error');
+      const total = cntRow ? cntRow.cnt : 0;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const query = 'SELECT s.id as score_id, s.score, s.completed_at, s.exam_id, s.student_id, u.username, u.full_name, u.course, u.year_level, u.set_group, e.title as exam_title, e.subject, e.semester, e.period FROM scores s JOIN users u ON s.student_id = u.id JOIN exams e ON s.exam_id = e.id ' + where + ' ORDER BY s.completed_at DESC LIMIT ? OFFSET ?';
+      const qParams = params.concat([limit, offset]);
+      db.all(query, qParams, (err2, scores) => {
+        if (err2) return res.status(500).send('Database error');
+        res.render('scores', { scores: scores || [], search, subject, subjectOptions: subjectOptions || [], page, totalPages, total, user: req.session });
+      });
     });
   });
 });
 
 app.post('/admin/scores/delete', isLoggedIn, isAdmin, (req, res) => {
   const { id } = req.body;
+  const backSubject = (req.body.subject || '').trim();
+  const suffix = backSubject ? '&subject=' + encodeURIComponent(backSubject) : '';
   const eSc = scopeClause(req, 'created_by', 'e');
   db.get('SELECT s.student_id, s.exam_id FROM scores s JOIN exams e ON s.exam_id = e.id WHERE s.id = ?' + eSc.sql, [id].concat(eSc.params), (err, row) => {
-    if (err || !row) return res.redirect('/admin/scores?error=' + encodeURIComponent('Record not found or not yours'));
+    if (err || !row) return res.redirect('/admin/scores?error=' + encodeURIComponent('Record not found or not yours') + suffix);
     db.run('DELETE FROM scores WHERE id=?', [id], (err2) => {
-      if (err2) return res.redirect('/admin/scores?error=' + encodeURIComponent('Delete failed'));
-      res.redirect('/admin/scores?success=' + encodeURIComponent('Record deleted — student can retake that exam now') + '&warning=' + encodeURIComponent('Deleted score for exam ' + row.exam_id));
+      if (err2) return res.redirect('/admin/scores?error=' + encodeURIComponent('Delete failed') + suffix);
+      res.redirect('/admin/scores?success=' + encodeURIComponent('Record deleted — student can retake that exam now') + '&warning=' + encodeURIComponent('Deleted score for exam ' + row.exam_id) + suffix);
     });
   });
 });
 
-// Scores printed report — all students who took exams (scoped to admin), grouped by SET and Year
+// Build the printable report structure from raw score rows: group -> SET -> year -> students.
+// idField is 'exam_id' (exams) or 'quiz_id' (quizzes); qMap maps that id to its question count.
+function buildScoreReport(rows, qMap, idField) {
+  const groups = new Map();
+  rows.forEach(r => {
+    const key = String(r[idField]);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        group_key: r[idField],
+        title: r.title,
+        subject: r.subject,
+        semester: r.semester,
+        period: r.period,
+        sets: new Map()
+      });
+    }
+    const group = groups.get(key);
+    const setKey = (r.set_group && r.set_group.trim()) ? r.set_group.trim().toUpperCase() : 'No Set';
+    if (!group.sets.has(setKey)) group.sets.set(setKey, new Map());
+    const years = group.sets.get(setKey);
+    const yearKey = (r.year_level && r.year_level.trim()) ? r.year_level.trim() : 'No Year';
+    if (!years.has(yearKey)) years.set(yearKey, []);
+    years.get(yearKey).push({
+      full_name: r.full_name || r.username,
+      username: r.username,
+      course: r.course || '—',
+      score: r.score,
+      completed_at: r.completed_at
+    });
+  });
+
+  const report = [];
+  let totalStudents = 0;
+  let scoreSum = 0;
+  const order = [...groups.keys()].sort((a, b) => String(groups.get(a).title).localeCompare(String(groups.get(b).title)));
+
+  order.forEach(key => {
+    const group = groups.get(key);
+    const questionCount = qMap[group.group_key] || 0;
+    const sets = [...group.sets.keys()].sort((a, b) => (a === 'No Set' ? 1 : 0) - (b === 'No Set' ? 1 : 0) || a.localeCompare(b));
+    group.setsArray = sets.map(setKey => {
+      const yearsMap = group.sets.get(setKey);
+      const years = [...yearsMap.keys()].sort((a, b) => (a === 'No Year' ? 1 : 0) - (b === 'No Year' ? 1 : 0) || a.localeCompare(b, undefined, { numeric: true }));
+      return {
+        set: setKey,
+        years: years.map(yearKey => {
+          const students = yearsMap.get(yearKey).sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)));
+          const sum = students.reduce((s, st) => s + st.score, 0);
+          students.forEach(st => { st.percent = questionCount ? Math.round(st.score / questionCount * 100) : 0; });
+          return {
+            year: yearKey,
+            students,
+            count: students.length,
+            sum,
+            avg: students.length ? Math.round(sum / students.length * 10) / 10 : 0
+          };
+        })
+      };
+    });
+
+    const groupStudents = rows.filter(r => String(r[idField]) === key);
+    group.studentsCount = groupStudents.length;
+    group.questionCount = questionCount;
+    group.avgScore = groupStudents.length ? Math.round(groupStudents.reduce((s, r) => s + r.score, 0) / groupStudents.length * 10) / 10 : 0;
+    group.avgPercent = questionCount ? Math.round(group.avgScore / questionCount * 100) : 0;
+    totalStudents += groupStudents.length;
+    scoreSum += groupStudents.reduce((s, r) => s + r.score, 0);
+    report.push(group);
+  });
+
+  return { report, totalStudents, scoreSum };
+}
+
+// Scores printed report — all students who took exams (scoped to admin), grouped by SET and Year.
+// Supports ?subject= to print only the selected subject.
 app.get('/admin/scores/report', isLoggedIn, isAdmin, (req, res) => {
+  const subject = (req.query.subject || '').trim();
   const eSc = scopeClause(req, 'created_by', 'e');
+  const subjectWhere = subject ? ' AND e.subject = ?' : '';
+  const params = subject ? eSc.params.concat([subject]) : eSc.params;
   db.all(`SELECT s.id as score_id, s.score, s.completed_at, s.student_id,
                  u.username, u.full_name, u.course, u.year_level, u.set_group,
-                 e.id as exam_id, e.title as exam_title, e.subject, e.semester, e.period
+                 e.id as exam_id, e.title as title, e.subject, e.semester, e.period
           FROM scores s
           JOIN users u ON s.student_id = u.id
           JOIN exams e ON s.exam_id = e.id
-          WHERE 1=1` + eSc.sql + `
-          ORDER BY e.title ASC, u.set_group ASC, u.year_level ASC, u.full_name ASC`, eSc.params, (err, rows) => {
+          WHERE 1=1` + eSc.sql + subjectWhere + `
+          ORDER BY e.title ASC, u.set_group ASC, u.year_level ASC, u.full_name ASC`, params, (err, rows) => {
     if (err) return res.status(500).send('Report generation failed. Please try again.');
-    if (!rows || rows.length === 0) return res.render('scores_report', { report: [], examsCount: 0, totalStudents: 0, overallAvg: 0, generatedAt: new Date(), user: req.session });
+    if (!rows || rows.length === 0) return res.render('scores_report', { report: [], subject, examsCount: 0, totalStudents: 0, overallAvg: 0, generatedAt: new Date(), user: req.session });
 
     // Count questions per exam for percentages
     db.all('SELECT exam_id, COUNT(*) as cnt FROM exam_questions GROUP BY exam_id', [], (err2, qCounts) => {
       const qMap = {};
       (qCounts || []).forEach(q => { qMap[q.exam_id] = q.cnt; });
 
-      // Group: exam -> set (letter) -> year -> students
-      const examsByKey = new Map();
-      rows.forEach(r => {
-        const key = String(r.exam_id);
-        if (!examsByKey.has(key)) {
-          examsByKey.set(key, {
-            exam_id: r.exam_id,
-            title: r.exam_title,
-            subject: r.subject,
-            semester: r.semester,
-            period: r.period,
-            sets: new Map()
-          });
-        }
-        const exam = examsByKey.get(key);
-        const setKey = (r.set_group && r.set_group.trim()) ? r.set_group.trim().toUpperCase() : 'No Set';
-        if (!exam.sets.has(setKey)) exam.sets.set(setKey, new Map());
-        const years = exam.sets.get(setKey);
-        const yearKey = (r.year_level && r.year_level.trim()) ? r.year_level.trim() : 'No Year';
-        if (!years.has(yearKey)) years.set(yearKey, []);
-        years.get(yearKey).push({
-          full_name: r.full_name || r.username,
-          username: r.username,
-          course: r.course || '—',
-          score: r.score,
-          completed_at: r.completed_at
-        });
-      });
-
-      const toLocale = (v, fallback) => (v && String(v).trim()) ? String(v).trim() : fallback;
-
-      const report = [];
-      let totalStudents = 0;
-      let scoreSum = 0;
-      const examOrder = [...examsByKey.keys()].sort((a, b) => String(examsByKey.get(a).title).localeCompare(String(examsByKey.get(b).title)));
-
-      examOrder.forEach(key => {
-        const exam = examsByKey.get(key);
-        const questionCount = qMap[exam.exam_id] || 0;
-        const sets = [...exam.sets.keys()].sort((a, b) => (a === 'No Set' ? 1 : 0) - (b === 'No Set' ? 1 : 0) || a.localeCompare(b));
-        const examSets = sets.map(setKey => {
-          const yearsMap = exam.sets.get(setKey);
-          const years = [...yearsMap.keys()].sort((a, b) => (a === 'No Year' ? 1 : 0) - (b === 'No Year' ? 1 : 0) || a.localeCompare(b, undefined, { numeric: true }));
-          return {
-            set: setKey,
-            years: years.map(yearKey => {
-              const students = yearsMap.get(yearKey).sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)));
-              const sum = students.reduce((s, st) => s + st.score, 0);
-              students.forEach(st => { st.percent = questionCount ? Math.round(st.score / questionCount * 100) : 0; });
-              return {
-                year: yearKey,
-                students,
-                count: students.length,
-                sum,
-                avg: students.length ? Math.round(sum / students.length * 10) / 10 : 0
-              };
-            })
-          };
-        });
-
-        const examStudents = rows.filter(r => String(r.exam_id) === key);
-        exam.studentsCount = examStudents.length;
-        exam.setsArray = examSets;
-        exam.questionCount = questionCount;
-        exam.avgScore = examStudents.length ? Math.round(examStudents.reduce((s, r) => s + r.score, 0) / examStudents.length * 10) / 10 : 0;
-        exam.avgPercent = questionCount ? Math.round(exam.avgScore / questionCount * 100) : 0;
-        totalStudents += examStudents.length;
-        scoreSum += examStudents.reduce((s, r) => s + r.score, 0);
-        report.push(exam);
-      });
+      // Group report rows: group -> SET -> year -> students (shared with the quiz report)
+      const { report, totalStudents, scoreSum } = buildScoreReport(rows, qMap, 'exam_id');
 
       res.render('scores_report', {
         report,
+        subject,
         examsCount: report.length,
+        totalStudents,
+        overallAvg: totalStudents ? Math.round(scoreSum / totalStudents * 10) / 10 : 0,
+        generatedAt: new Date(),
+        user: req.session
+      });
+    });
+  });
+});
+
+// Quiz scores printed report — mirrors the exam Scores Report and also supports ?subject=
+app.get('/admin/quiz-scores/report', isLoggedIn, isAdmin, (req, res) => {
+  const subject = (req.query.subject || '').trim();
+  const zSc = scopeClause(req, 'created_by', 'z');
+  const subjectWhere = subject ? ' AND z.subject = ?' : '';
+  const params = subject ? zSc.params.concat([subject]) : zSc.params;
+  db.all(`SELECT qs.id as score_id, qs.score, qs.completed_at, qs.student_id,
+                 u.username, u.full_name, u.course, u.year_level, u.set_group,
+                 z.id as quiz_id, z.title as title, z.subject, z.semester, z.period
+          FROM quiz_scores qs
+          JOIN users u ON qs.student_id = u.id
+          JOIN quizzes z ON qs.quiz_id = z.id
+          WHERE 1=1` + zSc.sql + subjectWhere + `
+          ORDER BY z.title ASC, u.set_group ASC, u.year_level ASC, u.full_name ASC`, params, (err, rows) => {
+    if (err) return res.status(500).send('Report generation failed. Please try again.');
+    if (!rows || rows.length === 0) return res.render('quiz_scores_report', { report: [], subject, quizzesCount: 0, totalStudents: 0, overallAvg: 0, generatedAt: new Date(), user: req.session });
+
+    // Count questions per quiz for percentages
+    db.all('SELECT quiz_id, COUNT(*) as cnt FROM quiz_questions GROUP BY quiz_id', [], (err2, qCounts) => {
+      const qMap = {};
+      (qCounts || []).forEach(q => { qMap[q.quiz_id] = q.cnt; });
+      const { report, totalStudents, scoreSum } = buildScoreReport(rows, qMap, 'quiz_id');
+
+      res.render('quiz_scores_report', {
+        report,
+        subject,
+        quizzesCount: report.length,
         totalStudents,
         overallAvg: totalStudents ? Math.round(scoreSum / totalStudents * 10) / 10 : 0,
         generatedAt: new Date(),

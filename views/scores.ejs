@@ -33,17 +33,26 @@
     </nav>
   </div>
   <div class="main-content">
+    <% const curSubject = (typeof subject !== 'undefined' && subject) ? subject : ''; %>
+    <% const subjectQuery = curSubject ? '&subject=' + encodeURIComponent(curSubject) : ''; %>
     <h2 style="margin:0 0 1rem 0;">Scores — Taken Exams</h2>
-    <form method="get" action="/admin/scores" style="display:flex; gap:0.5rem; margin-bottom:1rem; align-items:center;">
-      <input type="text" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>" placeholder="Search kahit ano — name, username, course, year, SET, exam, subject, semester, period, score..." style="flex:1; padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; font-family:Inter, sans-serif; background:white;">
+    <form method="get" action="/admin/scores" style="display:flex; gap:0.5rem; margin-bottom:1rem; align-items:center; flex-wrap:wrap;">
+      <input type="text" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>" placeholder="Search kahit ano — name, username, course, year, SET, exam, subject, semester, period, score..." style="flex:1; min-width:220px; padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; font-family:Inter, sans-serif; background:white;">
+      <label for="subjectFilter" style="font-weight:600; font-size:0.85rem; color:var(--muted);">Subject:</label>
+      <select id="subjectFilter" name="subject" onchange="this.form.submit()" style="min-width:180px; padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; font-family:Inter, sans-serif; background:white; font-weight:600; color:var(--text);">
+        <option value="">All Subjects</option>
+        <% (typeof subjectOptions !== 'undefined' ? subjectOptions : []).forEach(sub => { %>
+          <option value="<%= sub %>" <%= curSubject === sub ? 'selected' : '' %>><%= sub %></option>
+        <% }) %>
+      </select>
       <button type="submit" style="padding:0.65rem 1rem; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Search</button>
-      <% if (typeof search !== 'undefined' && search) { %><a href="/admin/scores" style="padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--muted); background:white; font-size:0.85rem;">Clear</a><% } %>
+      <% if ((typeof search !== 'undefined' && search) || curSubject) { %><a href="/admin/scores" style="padding:0.65rem 0.9rem; border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--muted); background:white; font-size:0.85rem;">Clear</a><% } %>
     </form>
     <div class="card" style="padding:0; overflow:hidden;">
       <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <h3 style="margin:0;">All Scores (<%= typeof total !== 'undefined' ? total : scores.length %>)</h3>
+        <h3 style="margin:0;">All Scores (<%= typeof total !== 'undefined' ? total : scores.length %>)<% if (curSubject) { %> <span class="badge badge-subj" style="margin-left:0.35rem;">Subject: <%= curSubject %></span><% } %></h3>
         <span style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-          <a href="/admin/scores/report" class="btn btn-primary" style="padding:0.5rem 0.9rem; font-size:0.85rem; display:inline-flex; gap:0.4rem; align-items:center;">
+          <a href="/admin/scores/report<%= curSubject ? '?subject=' + encodeURIComponent(curSubject) : '' %>" class="btn btn-primary" style="padding:0.5rem 0.9rem; font-size:0.85rem; display:inline-flex; gap:0.4rem; align-items:center;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:14px;height:14px;"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
             Print Report
           </a>
@@ -73,6 +82,7 @@
               <td style="text-align:right;">
                 <form action="/admin/scores/delete" method="post" style="display:inline;" data-message="Delete record for <%= s.username %> — <%= s.exam_title %>?<br><small>Student can retake that exam after deleting.</small>" data-confirm-text="Delete" data-danger="true">
                   <input type="hidden" name="id" value="<%= s.score_id %>">
+                  <input type="hidden" name="subject" value="<%= curSubject %>">
                   <button class="btn-delete">Delete → Retake</button>
                 </form>
               </td>
@@ -84,18 +94,18 @@
       <div style="display:flex; justify-content:space-between; align-items:center; padding:0.9rem 1.25rem; border-top:1px solid var(--border); flex-wrap:wrap; gap:0.5rem;">
         <span style="font-size:0.8rem; color:var(--muted);">Page <%= page %> of <%= totalPages %> • <%= total %> records • 10 per page</span>
         <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
-          <% if (page > 1) { %><a href="/admin/scores?page=<%= page-1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;">‹ Prev</a><% } %>
+          <% if (page > 1) { %><a href="/admin/scores?page=<%= page-1 %><%= search ? '&search='+encodeURIComponent(search) : '' %><%= subjectQuery %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;">‹ Prev</a><% } %>
           <% for(let p=1; p<=totalPages; p++){ %>
             <% if(p===page){ %><span style="padding:0.4rem 0.7rem; background:var(--primary); color:white; border-radius:6px; font-weight:700; font-size:0.8rem;"><%= p %></span>
-            <% } else if(p<=2 || p>totalPages-1 || Math.abs(p-page)<=1){ %><a href="/admin/scores?page=<%= p %><%= search ? '&search='+encodeURIComponent(search) : '' %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;"><%= p %></a>
+            <% } else if(p<=2 || p>totalPages-1 || Math.abs(p-page)<=1){ %><a href="/admin/scores?page=<%= p %><%= search ? '&search='+encodeURIComponent(search) : '' %><%= subjectQuery %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;"><%= p %></a>
             <% } else if((p===3 && page>4) || (p===totalPages-2 && page < totalPages-3)){ %><span style="padding:0.4rem; color:var(--muted);">…</span><% } %>
           <% } %>
-          <% if (page < totalPages) { %><a href="/admin/scores?page=<%= page+1 %><%= search ? '&search='+encodeURIComponent(search) : '' %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;">Next ›</a><% } %>
+          <% if (page < totalPages) { %><a href="/admin/scores?page=<%= page+1 %><%= search ? '&search='+encodeURIComponent(search) : '' %><%= subjectQuery %>" style="padding:0.4rem 0.7rem; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:white; font-size:0.8rem;">Next ›</a><% } %>
         </div>
       </div>
     </div>
     <% if (scores.length === 0) { %>
-      <p style="text-align:center; color:var(--muted); padding:2rem;">No scores yet. Create an exam and have students take it.</p>
+      <p style="text-align:center; color:var(--muted); padding:2rem;">No scores recorded<%= curSubject ? ' for ' + curSubject : '' %> yet.<%= curSubject ? ' Choose "All Subjects" to see every subject.' : ' Create an exam and have students take it.' %></p>
     <% } %>
     </div>
     <p style="color:var(--muted); font-size:0.85rem; margin-top:0.8rem;">Tip: Deleting a record allows that student to retake that specific exam. Deleting the <b>User</b> in <a href="/admin/users" style="color:var(--primary);">Users</a> also deletes all their scores.</p>
