@@ -927,6 +927,46 @@ app.get('/student/quiz/:quizId/result', isLoggedIn, (req, res) => {
   });
 });
 
+// Quiz scores (admin) - taken quizzes with score, search + pagination (scoped to this admin's quizzes)
+app.get('/admin/quiz-scores', isLoggedIn, isAdmin, (req, res) => {
+  const search = (req.query.search || '').trim();
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = 10;
+  const offset = (page - 1) * limit;
+  const like = '%' + search + '%';
+  const zSc = scopeClause(req, 'created_by', 'z');
+  const baseWhere = ' WHERE 1=1' + zSc.sql;
+  const searchWhere = search ? ' AND (u.full_name LIKE ? OR u.username LIKE ? OR u.course LIKE ? OR u.year_level LIKE ? OR u.set_group LIKE ? OR z.title LIKE ? OR z.subject LIKE ? OR z.semester LIKE ? OR z.period LIKE ? OR qs.score LIKE ?)' : '';
+  const searchParams = search ? [like, like, like, like, like, like, like, like, like, like] : [];
+  const where = baseWhere + searchWhere;
+  const params = zSc.params.concat(searchParams);
+  db.get('SELECT COUNT(*) as cnt FROM quiz_scores qs JOIN users u ON qs.student_id = u.id JOIN quizzes z ON qs.quiz_id = z.id ' + where, params, (err, cntRow) => {
+    if (err) return res.status(500).send('Database error');
+    const total = cntRow ? cntRow.cnt : 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const query = 'SELECT qs.id as score_id, qs.score, qs.completed_at, qs.quiz_id, qs.student_id, u.username, u.full_name, u.course, u.year_level, u.set_group, z.title as quiz_title, z.subject, z.semester, z.period, (SELECT COUNT(*) FROM quiz_questions zq WHERE zq.quiz_id = z.id) as question_count FROM quiz_scores qs JOIN users u ON qs.student_id = u.id JOIN quizzes z ON qs.quiz_id = z.id ' + where + ' ORDER BY qs.completed_at DESC LIMIT ? OFFSET ?';
+    const qParams = params.concat([limit, offset]);
+    db.all(query, qParams, (err2, scores) => {
+      if (err2) return res.status(500).send('Database error');
+      res.render('quiz_scores', { scores: scores || [], search, page, totalPages, total, user: req.session });
+    });
+  });
+});
+
+// Delete/reset a quiz score so that student can retake the quiz (scoped to this admin's quizzes)
+app.post('/admin/quiz-scores/delete', isLoggedIn, isAdmin, (req, res) => {
+  const { id } = req.body;
+  const zSc = scopeClause(req, 'created_by', 'z');
+  db.get('SELECT qs.student_id, qs.quiz_id, z.title as quiz_title FROM quiz_scores qs JOIN quizzes z ON qs.quiz_id = z.id WHERE qs.id = ?' + zSc.sql, [id].concat(zSc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/quiz-scores?error=' + encodeURIComponent('Record not found or not yours'));
+    db.run('DELETE FROM quiz_scores WHERE id=?', [id], (err2) => {
+      if (err2) return res.redirect('/admin/quiz-scores?error=' + encodeURIComponent('Reset failed'));
+      notifyUser(row.student_id, 'quiz', 'Quiz Reset', 'Your instructor reset your attempt for "' + row.quiz_title + '". You can take it again.', '/student');
+      res.redirect('/admin/quiz-scores?success=' + encodeURIComponent('Quiz attempt reset — student can retake "' + row.quiz_title + '" now'));
+    });
+  });
+});
+
 // Student dashboard - list exams filtered by student's admin (referrer) + subjects, show taken + score
 app.get('/student', isLoggedIn, (req, res) => {
   db.get('SELECT subjects, full_name, course, year_level, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
