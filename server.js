@@ -943,7 +943,7 @@ app.get('/student', isLoggedIn, (req, res) => {
         let filtered = allExams;
         if (mySubjects && mySubjects.length) filtered = allExams.filter(e => mySubjects.includes(e.subject));
         filtered.forEach(e => { e.closed = examLocked(e); });
-        db.all("SELECT z.*, GROUP_CONCAT(qq.question_id, ',') as qids FROM quizzes z LEFT JOIN quiz_questions qq ON z.id = qq.quiz_id WHERE z.created_at >= ? GROUP BY z.id ORDER BY z.created_at DESC", ['1900-01-01'], (errQ, quizzes) => {
+        db.all("SELECT z.*, GROUP_CONCAT(qq.question_id, ',') as qids FROM quizzes z LEFT JOIN quiz_questions qq ON z.id = qq.quiz_id WHERE z.created_by = ? GROUP BY z.id ORDER BY z.created_at DESC", [ownerId], (errQ, quizzes) => {
           if (errQ) { console.error('Quiz query error:', errQ); return res.status(500).send('Database error'); }
           db.all('SELECT quiz_id, score, completed_at FROM quiz_scores WHERE student_id = ?', [req.session.userId], (errSQ, quizScores) => {
             if (errSQ) { return res.status(500).send('Database error'); }
