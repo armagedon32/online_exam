@@ -23,6 +23,7 @@
       <span class="brand">Student Portal</span>
       <a href="/student" class="nav-link active" aria-current="page">Dashboard</a>
       <a href="/student#exams" class="nav-link">My Exams</a>
+      <a href="/student#quizzes" class="nav-link">My Quizzes</a>
       <a href="/student/lessons" class="nav-link">Lessons</a>
       <a href="/student/assignments" class="nav-link">Assignments</a>
       <a href="/student/messages" class="nav-link">Messages</a>
@@ -64,9 +65,13 @@
           <% if (typeof allExams !== 'undefined' && allExams.length !== exams.length) { %>
             <div style="font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1);">Filtered from <%= allExams.length %> total</div>
           <% } %>
+          <div style="font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: var(--font-semibold); margin: var(--space-4) 0 var(--space-1);">Available Quizzes</div>
+          <div style="font-size: var(--text-3xl); font-weight: var(--font-extrabold); color: var(--text-primary);"><%= (typeof quizzes !== 'undefined' && quizzes) ? quizzes.length : 0 %></div>
         </div>
       </div>
     </div>
+
+    <h2 id="exams" style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary); margin: 0 0 var(--space-4);">My Exams</h2>
 
     <% if (exams.length === 0) { %>
       <div class="card">
@@ -155,6 +160,105 @@
           <% } %>
         <% }) %>
       </div>
+    <% } %>
+
+    <% const qList = (typeof quizzes !== 'undefined' && quizzes) ? quizzes : []; %>
+    <% if (qList.length) { %>
+      <section id="quizzes" style="margin-top: var(--space-8);">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4);">
+          <h2 style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary); margin: 0;">My Quizzes</h2>
+          <span style="font-size: var(--text-sm); color: var(--text-muted);"><%= qList.length %> quiz<%= qList.length === 1 ? '' : 'zes' %> from your instructor</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4);">
+          <% qList.forEach(z => {
+              const qTaken = quizTakenSet && quizTakenSet.has(String(z.id));
+              const qScore = quizScoreMap && quizScoreMap[z.id];
+              const enrolled = !(mySubjects && mySubjects.length) || mySubjects.includes(z.subject);
+              const qCount = z.question_count || 0;
+          %>
+            <% if (qTaken) { %>
+              <article class="card" style="border-style: dashed; opacity: 0.9; background: var(--bg-tertiary);">
+                <div class="card-body">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3);">
+                    <h3 style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); flex: 1; margin: 0;"><%= z.title %></h3>
+                    <span class="badge badge-success">Completed</span>
+                  </div>
+                  <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+                    <span class="badge badge-subj"><%= z.subject %></span>
+                    <% if (z.semester) { %><span class="badge badge-primary"><%= z.semester %></span><% } %>
+                    <% if (z.period) { %><span class="badge badge-warning"><%= z.period %></span><% } %>
+                  </p>
+                  <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-success); font-weight: var(--font-semibold);">
+                    Your Score: <strong><%= qScore ? qScore.score : '—' %></strong><% if (qScore && qScore.completed_at) { %> · <%= new Date(qScore.completed_at).toLocaleDateString() %><% } %>
+                  </p>
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
+                    <span style="font-size: var(--text-xs); color: var(--text-muted);"><%= z.duration || 30 %> min · <%= qCount %> item<%= qCount === 1 ? '' : 's' %> · Cannot retake</span>
+                    <a href="/student/quiz/<%= z.id %>/result" class="btn btn-secondary btn-sm" style="text-decoration: none; white-space: nowrap;">View Result</a>
+                  </div>
+                </div>
+              </article>
+            <% } else if (z.closed || !enrolled) { %>
+              <article class="card" style="opacity: 0.7; background: var(--bg-tertiary); border-color: transparent;">
+                <div class="card-body">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3);">
+                    <h3 style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); flex: 1; margin: 0;"><%= z.title %></h3>
+                    <span class="badge badge-danger"><%= z.closed ? 'Closed' : 'Not Enrolled' %></span>
+                  </div>
+                  <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+                    <span class="badge badge-subj"><%= z.subject %></span>
+                    <% if (z.semester) { %><span class="badge badge-primary"><%= z.semester %></span><% } %>
+                    <% if (z.period) { %><span class="badge badge-warning"><%= z.period %></span><% } %>
+                  </p>
+                  <% if (z.instructor) { %>
+                    <p style="margin: 0 0 var(--space-1); font-size: var(--text-sm); color: var(--text-muted);">Instructor: <%= z.instructor %></p>
+                  <% } %>
+                  <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-muted);">
+                    <% if (z.due_date) { %>Due: <strong><%= z.due_date %></strong> (until 11:59 PM)<% } else { %>No due date<% } %>
+                  </p>
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
+                    <span style="font-size: var(--text-sm); color: var(--text-muted);"><%= z.duration || 30 %> min · <%= qCount %> item<%= qCount === 1 ? '' : 's' %></span>
+                    <span class="btn btn-sm" style="cursor: not-allowed; opacity: 0.8;"><%= z.closed ? 'Not Available' : 'Not in your subjects' %></span>
+                  </div>
+                </div>
+              </article>
+            <% } else { %>
+              <a href="/student/quiz/<%= z.id %>" class="card" style="text-decoration: none; color: inherit; display: block; transition: all var(--transition-base);">
+                <div class="card-body">
+                  <h3 style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); margin: 0 0 var(--space-3);"><%= z.title %></h3>
+                  <p style="margin: 0 0 var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+                    <span class="badge badge-subj"><%= z.subject %></span>
+                    <% if (z.semester) { %><span class="badge badge-primary"><%= z.semester %></span><% } %>
+                    <% if (z.period) { %><span class="badge badge-warning"><%= z.period %></span><% } %>
+                  </p>
+                  <% if (z.instructor) { %>
+                    <p style="margin: 0 0 var(--space-1); font-size: var(--text-sm); color: var(--text-muted);">Instructor: <%= z.instructor %></p>
+                  <% } %>
+                  <p style="margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-muted);">
+                    <% if (z.due_date) { %>Due: <strong><%= z.due_date %></strong> (until 11:59 PM)<% } else { %>No due date<% } %>
+                  </p>
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-light);">
+                    <span style="font-size: var(--text-sm); color: var(--text-muted);"><%= z.duration || 30 %> min · <%= qCount %> item<%= qCount === 1 ? '' : 's' %></span>
+                    <span class="btn btn-primary btn-sm" style="padding: var(--space-2) var(--space-4);">Take Quiz →</span>
+                  </div>
+                </div>
+              </a>
+            <% } %>
+          <% }) %>
+        </div>
+      </section>
+    <% } else { %>
+      <section id="quizzes" style="margin-top: var(--space-8);">
+        <h2 style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-primary); margin: 0 0 var(--space-4);">My Quizzes</h2>
+        <div class="card">
+          <div class="card-body" style="padding: var(--space-12) var(--space-6);">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <h3>No quizzes available yet</h3>
+              <p>Your subjects: <strong><%= (mySubjects||[]).join(', ') || 'none' %></strong>. Quizzes created by your instructor appear here.</p>
+            </div>
+          </div>
+        </div>
+      </section>
     <% } %>
   </div>
 
