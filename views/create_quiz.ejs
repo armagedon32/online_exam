@@ -32,7 +32,7 @@
       <a href="/admin/questions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
         Questions
       </a>
-      <a href="/admin/quizs/create" class="active">
+      <a href="/admin/quizzes/create" class="active">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         Create Quiz
       </a>
@@ -85,7 +85,7 @@
       <button type="button" class="close" aria-label="Dismiss">&times;</button>
     </div>
 
-    <form action="/admin/quizs/create" method="post" id="quizForm">
+    <form action="/admin/quizzes/create" method="post" id="quizForm">
       <div class="card" style="margin-bottom: var(--space-6);">
         <div class="card-header"><h3>Quiz Details</h3></div>
         <div class="card-body">
@@ -146,7 +146,7 @@
             <div class="form-group">
               <label for="due_date">Due Date <span style="font-weight:var(--font-normal); text-transform:none; color:var(--text-muted); font-size:var(--text-xs);">— optional</span></label>
               <input type="date" id="due_date" name="due_date">
-              <span class="form-hint">Leave empty = always open. After this date (closes 11:59 PM), students can't take the quiz unless you reopen it in Quizs.</span>
+              <span class="form-hint">Leave empty = always open. After this date (closes 11:59 PM), students can't take the quiz unless you reopen it in Quizzes.</span>
             </div>
           </div>
         </div>
