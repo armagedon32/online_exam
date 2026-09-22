@@ -202,6 +202,18 @@ db.serialize(() => {
     );
   `);
 
+// ===== LESSON PROGRESS (Mark as Done per student per lesson) =====
+db.run(`CREATE TABLE IF NOT EXISTS lesson_progress (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL,
+  lesson_id INTEGER NOT NULL,
+  is_done INTEGER DEFAULT 1,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(student_id, lesson_id)
+);`);
+db.run("ALTER TABLE lesson_progress ADD COLUMN is_done INTEGER DEFAULT 1", () => {});
+db.run("ALTER TABLE lesson_progress ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP", () => {});
+
 // ===== QUIZ TABLES (separate module from exams - quizzes stay distinct, never merged with exams) =====
 db.run(`CREATE TABLE IF NOT EXISTS quizzes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1867,19 +1879,55 @@ app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
 
 // ===== LESSONS (Materials / Content sharing) =====
 
-// --- Admin: List lessons (grouped by date) ---
+// --- Admin: List lessons (grouped by date) — with per-lesson done stats ---
 app.get('/admin/lessons', isLoggedIn, isAdmin, (req, res) => {
   const sc = scopeClause(req, 'created_by');
   db.all('SELECT * FROM lessons WHERE 1=1' + sc.sql + ' ORDER BY date DESC, created_at DESC', sc.params, (err, lessons) => {
     if (err) return res.status(500).send('Database error');
-    // Group by date
-    const byDate = {};
-    (lessons || []).forEach(l => {
-      const key = l.date || 'No Date';
-      if (!byDate[key]) byDate[key] = [];
-      byDate[key].push(l);
+    const ids = (lessons || []).map(l => l.id);
+    const fetchStats = (cb) => {
+      if (!ids.length) return cb({});
+      const ph = ids.map(() => '?').join(',');
+      // count distinct students who marked done per lesson
+      db.all('SELECT lesson_id, COUNT(*) as doneCount FROM lesson_progress WHERE lesson_id IN (' + ph + ') AND is_done=1 GROUP BY lesson_id', ids, (err2, rows) => {
+        if (err2) return cb({});
+        const map = {};
+        (rows || []).forEach(r => { map[String(r.lesson_id)] = r.doneCount; });
+        // also total students for this admin (for denominator)
+        db.get("SELECT COUNT(*) as cnt FROM users WHERE role='student' AND referrer_id = ?", [req.session.userId], (err3, cntRow) => {
+          const totalStudents = cntRow ? cntRow.cnt : 0;
+          cb({ perLesson: map, totalStudents });
+        });
+      });
+    };
+    fetchStats((stats) => {
+      const perLesson = stats.perLesson || {};
+      const totalStudents = stats.totalStudents || 0;
+      (lessons || []).forEach(l => { l.doneCount = perLesson[String(l.id)] || 0; l.totalStudents = totalStudents; });
+      const byDate = {};
+      (lessons || []).forEach(l => {
+        const key = l.date || 'No Date';
+        if (!byDate[key]) byDate[key] = [];
+        byDate[key].push(l);
+      });
+      res.render('admin_lessons', { lessons: lessons || [], byDate, user: req.session });
     });
-    res.render('admin_lessons', { lessons: lessons || [], byDate, user: req.session });
+  });
+});
+
+// --- Admin: Lesson progress detail — which students marked done ---
+app.get('/admin/lessons/:id/progress', isLoggedIn, isAdmin, (req, res) => {
+  const lId = parseInt(req.params.id, 10);
+  if (!lId) return res.redirect('/admin/lessons');
+  const sc = scopeClause(req, 'created_by', 'l');
+  db.get('SELECT l.* FROM lessons l WHERE l.id = ?' + sc.sql, [lId].concat(sc.params), (err, lesson) => {
+    if (err || !lesson) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Lesson not found'));
+    db.all("SELECT u.id, u.full_name, u.username, u.course, u.year_level, u.set_group, u.subjects, lp.updated_at FROM users u LEFT JOIN lesson_progress lp ON lp.student_id = u.id AND lp.lesson_id = ? AND lp.is_done=1 WHERE u.role='student' AND u.referrer_id = ? ORDER BY lp.updated_at DESC, u.full_name ASC", [lId, req.session.userId], (err2, rows) => {
+      if (err2) return res.status(500).send('Database error');
+      const done = (rows || []).filter(r => r.updated_at);
+      const notDone = (rows || []).filter(r => !r.updated_at);
+      res.render('admin_lesson_progress', { lesson, done, notDone, user: req.session });
+    });
   });
 });
 
@@ -1987,14 +2035,16 @@ app.post('/admin/lessons/delete', isLoggedIn, isAdmin, (req, res) => {
   const sc = scopeClause(req, 'created_by', 'l');
   db.get('SELECT l.id FROM lessons l WHERE l.id = ?' + sc.sql, [id].concat(sc.params), (err, row) => {
     if (err || !row) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Not found'));
-    db.run('DELETE FROM lessons WHERE id = ?', [id], (err2) => {
-      if (err2) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Delete failed'));
-      res.redirect('/admin/lessons?warning=' + encodeURIComponent('Lesson deleted'));
+    db.run('DELETE FROM lesson_progress WHERE lesson_id = ?', [id], () => {
+      db.run('DELETE FROM lessons WHERE id = ?', [id], (err2) => {
+        if (err2) return res.redirect('/admin/lessons?error=' + encodeURIComponent('Delete failed'));
+        res.redirect('/admin/lessons?warning=' + encodeURIComponent('Lesson deleted'));
+      });
     });
   });
 });
 
-// --- Student: List lessons (grouped by date, scoped to own teacher + subjects) ---
+// --- Student: List lessons (grouped by date, scoped to own teacher + subjects) — with progress ---
 app.get('/student/lessons', isLoggedIn, (req, res) => {
   db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
     if (err) return res.status(500).send('Database error');
@@ -2002,7 +2052,7 @@ app.get('/student/lessons', isLoggedIn, (req, res) => {
     try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
     const ownerId = u?.referrer_id ?? null;
     if (!ownerId) {
-      return res.render('student_lessons', { byDate: {}, lessonCount: 0, user: req.session, mySubjects, subjects: [], selected: '' });
+      return res.render('student_lessons', { byDate: {}, lessonCount: 0, doneCount: 0, doneSet: new Set(), progressPct: 0, user: req.session, mySubjects, subjects: [], selected: '' });
     }
     db.all('SELECT * FROM lessons WHERE created_by = ? ORDER BY date DESC, created_at DESC', [ownerId], (err2, lessons) => {
       if (err2) return res.status(500).send('Database error');
@@ -2011,13 +2061,57 @@ app.get('/student/lessons', isLoggedIn, (req, res) => {
       const subjects = mySubjects.slice().sort();
       const sel = mySubjects.includes(req.query.subject) ? req.query.subject : '';
       if (sel) filtered = filtered.filter(l => l.subject === sel);
-      const byDate = {};
-      filtered.forEach(l => {
-        const key = l.date || 'No Date';
-        if (!byDate[key]) byDate[key] = [];
-        byDate[key].push(l);
+      const lessonIds = filtered.map(l => l.id);
+      const fetchDone = (cb) => {
+        if (!lessonIds.length) return cb(new Set());
+        const ph = lessonIds.map(() => '?').join(',');
+        db.all('SELECT lesson_id FROM lesson_progress WHERE student_id = ? AND lesson_id IN (' + ph + ') AND is_done = 1', [req.session.userId].concat(lessonIds), (err3, rows) => {
+          if (err3) return cb(new Set());
+          cb(new Set((rows || []).map(r => String(r.lesson_id))));
+        });
+      };
+      fetchDone((doneSet) => {
+        const byDate = {};
+        filtered.forEach(l => {
+          const key = l.date || 'No Date';
+          if (!byDate[key]) byDate[key] = [];
+          l.is_done = doneSet.has(String(l.id));
+          byDate[key].push(l);
+        });
+        const doneCount = doneSet.size;
+        const progressPct = filtered.length ? Math.round(doneCount / filtered.length * 100) : 0;
+        res.render('student_lessons', { byDate, lessonCount: filtered.length, doneCount, doneSet, progressPct, user: req.session, mySubjects, subjects, selected: sel });
       });
-      res.render('student_lessons', { byDate, lessonCount: filtered.length, user: req.session, mySubjects, subjects, selected: sel });
+    });
+  });
+});
+
+// --- Student: Toggle lesson Done/Undone ---
+app.post('/student/lessons/:id/progress', isLoggedIn, (req, res) => {
+  const lId = parseInt(req.params.id, 10);
+  const wantDone = req.body.is_done === '0' ? 0 : 1;
+  if (!lId) return res.redirect('/student/lessons?error=' + encodeURIComponent('Invalid lesson'));
+  db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    if (err) return res.status(500).send('Database error');
+    const ownerId = u?.referrer_id ?? null;
+    if (!ownerId) return res.redirect('/student/lessons?error=' + encodeURIComponent('No instructor assigned'));
+    db.get('SELECT id, subject, created_by FROM lessons WHERE id = ? AND created_by = ?', [lId, ownerId], (err2, lesson) => {
+      if (err2 || !lesson) return res.redirect('/student/lessons?error=' + encodeURIComponent('Lesson not found'));
+      let mySubjects = [];
+      try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) {}
+      if (mySubjects.length && lesson.subject && !mySubjects.includes(lesson.subject)) {
+        return res.redirect('/student/lessons?error=' + encodeURIComponent('Not enrolled in this subject'));
+      }
+      if (wantDone === 0) {
+        db.run('DELETE FROM lesson_progress WHERE student_id = ? AND lesson_id = ?', [req.session.userId, lId], () => {
+          res.redirect('/student/lessons?success=' + encodeURIComponent('Marked as not done'));
+        });
+      } else {
+        db.run('INSERT INTO lesson_progress (student_id, lesson_id, is_done) VALUES (?, ?, 1) ON CONFLICT(student_id, lesson_id) DO UPDATE SET is_done=1, updated_at=CURRENT_TIMESTAMP', [req.session.userId, lId], (err3) => {
+          if (err3) return res.redirect('/student/lessons?error=' + encodeURIComponent('Failed to update progress'));
+          res.redirect('/student/lessons?success=' + encodeURIComponent('Lesson marked as done ✓'));
+        });
+      }
     });
   });
 });

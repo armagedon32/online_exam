@@ -71,6 +71,7 @@
                   <th>Content</th>
                   <th>File</th>
                   <th>Video Link</th>
+                  <th>Progress</th>
                   <th>Posted</th>
                   <th class="text-right">Actions</th>
                 </tr>
@@ -94,9 +95,15 @@
                         <a href="<%= l.video_link %>" target="_blank" rel="noopener" style="color:var(--color-primary); font-size:var(--text-sm);">🔗 Open</a>
                       <% } else { %><span class="cell-muted">—</span><% } %>
                     </td>
+                    <td style="font-size:var(--text-sm);">
+                      <a href="/admin/lessons/<%= l.id %>/progress" style="text-decoration:none;">
+                        <span class="badge <%= (l.doneCount||0) > 0 ? 'badge-success' : 'badge-warning' %>"><%= l.doneCount || 0 %>/<%= l.totalStudents || 0 %> done</span>
+                      </a>
+                    </td>
                     <td class="cell-muted" style="font-size:var(--text-xs);"><%= l.created_at %></td>
                     <td class="text-right">
                       <div class="actions">
+                        <a href="/admin/lessons/<%= l.id %>/progress" class="btn btn-view btn-sm">Progress</a>
                         <a href="/admin/lessons/<%= l.id %>/edit" class="btn btn-secondary btn-sm">Edit</a>
                         <form action="/admin/lessons/delete" method="post" class="d-inline" data-message="Delete lesson '<%= l.title %>'?<br><small>This cannot be undone.</small>" data-confirm-text="Delete" data-danger="true">
                           <input type="hidden" name="id" value="<%= l.id %>">

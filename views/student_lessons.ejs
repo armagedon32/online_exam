@@ -47,6 +47,18 @@
     <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
     <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
 
+    <% if (typeof lessonCount !== 'undefined' && lessonCount > 0) { %>
+    <div class="card" style="padding: var(--space-4) var(--space-5); margin-bottom: var(--space-5); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap: var(--space-3); background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border: none;">
+      <div>
+        <div style="font-weight:700; font-size: var(--text-base);">Your Progress: <%= doneCount %>/<%= lessonCount %> done (<%= progressPct %>%)</div>
+        <div style="font-size: var(--text-sm); opacity:0.9;">Mark lessons as done as you finish reading/watching.</div>
+      </div>
+      <div style="flex:1; min-width:160px; max-width:320px; background: rgba(255,255,255,0.3); border-radius: 999px; height: 10px; overflow:hidden;">
+        <div style="width: <%= progressPct %>%; height:100%; background: white; border-radius:999px; transition: width 0.3s;"></div>
+      </div>
+    </div>
+    <% } %>
+
     <% if (subjects.length > 1) { %>
       <form action="/student/lessons" method="get" class="card" style="padding: var(--space-4); margin-bottom: var(--space-5); display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;">
         <label for="subjectFilter" style="margin:0; font-size:var(--text-sm); text-transform:none; letter-spacing:0; color:var(--text-muted);">Filter by Subject:</label>
@@ -83,22 +95,26 @@
           </div>
           <div class="card-body" style="padding: var(--space-3) 0;">
             <% byDate[dateKey].forEach(l => { %>
-              <div style="padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-light);">
+              <div style="padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-light); <%= l.is_done ? 'background: var(--bg-success-light, #f0fdf4);' : '' %>">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); flex-wrap:wrap;">
                   <div style="flex:1; min-width:240px;">
-                    <h4 style="margin:0 0 var(--space-2); font-size:var(--text-base); font-weight:var(--font-semibold); color:var(--text-primary);"><%= l.title %></h4>
+                    <h4 style="margin:0 0 var(--space-2); font-size:var(--text-base); font-weight:var(--font-semibold); color:var(--text-primary);"><%= l.is_done ? '✓ ' : '' %><%= l.title %> <% if (l.is_done) { %><span class="badge badge-success" style="margin-left:6px;">Done ✓</span><% } %></h4>
                     <% if (l.subject) { %><span class="badge badge-primary"><%= l.subject %></span><% } %>
                     <% if (l.file_name) { %>
                       <a href="/student/lessons/<%= l.id %>/file" class="badge badge-set" style="text-decoration:none;" download="<%= l.file_name %>">📎 <%= l.file_name %></a>
                     <% } %>
                   </div>
-                  <div style="display:flex; gap:var(--space-2); align-items:center;">
+                  <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap;">
                     <% if (l.video_link) { %>
                       <a href="<%= l.video_link %>" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="padding:var(--space-2) var(--space-4); text-decoration:none;">▶ Watch Video</a>
                     <% } %>
                     <% if (l.file_name) { %>
                       <a href="/student/lessons/<%= l.id %>/file" class="btn btn-view btn-sm" style="text-decoration:none;" download="<%= l.file_name %>">⬇ Download</a>
                     <% } %>
+                    <form action="/student/lessons/<%= l.id %>/progress" method="post" style="display:inline;">
+                      <input type="hidden" name="is_done" value="<%= l.is_done ? '0' : '1' %>">
+                      <button type="submit" class="<%= l.is_done ? 'btn btn-secondary btn-sm' : 'btn btn-success btn-sm' %>" style="white-space:nowrap;"><%= l.is_done ? '↩ Undo' : '✓ Mark as Done' %></button>
+                    </form>
                   </div>
                 </div>
                 <% if (l.description) { %>
