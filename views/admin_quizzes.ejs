@@ -127,14 +127,15 @@
                 </td>
                 <td class="text-right">
                   <div class="actions">
+                    <button class="btn btn-edit btn-sm" onclick="openQuizEdit(<%= e.id %>)">Edit</button>
                     <% if (e.closed) { %>
-                    <form action="/admin/quizzes/reopen" method="post" class="d-inline" data-message="Reopen \"<%= e.title %>\" for 7 more days? Students will be notified." data-confirm-text="Reopen">
+                    <form action="/admin/quizzes/reopen" method="post" class="d-inline" data-message="Reopen &quot;<%= e.title %>&quot; for 7 more days? Students will be notified." data-confirm-text="Reopen">
                       <input type="hidden" name="id" value="<%= e.id %>">
                       <input type="hidden" name="days" value="7">
                       <button class="btn btn-success btn-sm" type="submit">Reopen +7 days</button>
                     </form>
                     <% } else { %>
-                    <form action="/admin/quizzes/set-active" method="post" class="d-inline" data-message="Disable \"<%= e.title %>\"? Students will no longer be able to take it." data-confirm-text="Disable" data-danger="true">
+                    <form action="/admin/quizzes/set-active" method="post" class="d-inline" data-message="Disable &quot;<%= e.title %>&quot;? Students will no longer be able to take it." data-confirm-text="Disable" data-danger="true">
                       <input type="hidden" name="id" value="<%= e.id %>">
                       <input type="hidden" name="active" value="0">
                       <button class="btn btn-danger btn-sm" type="submit">Disable</button>
@@ -143,6 +144,36 @@
                   </div>
                 </td>
               </tr>
+              <!-- Edit Quiz Modal: re-enable + set due date/duration -->
+              <div id="quiz-edit-<%= e.id %>" class="modal" onclick="if(event.target===this) closeQuizEdit(<%= e.id %>)">
+                <div class="modal-card" style="max-width:480px;">
+                  <div class="modal-header"><h3>Edit — <%= e.title %></h3><button class="close-modal" onclick="closeQuizEdit(<%= e.id %>)">&times;</button></div>
+                  <form action="/admin/quizzes/edit" method="post">
+                    <input type="hidden" name="id" value="<%= e.id %>">
+                    <div class="form-group">
+                      <label>Due Date (leave empty = no deadline)</label>
+                      <input type="date" name="due_date" value="<%= e.due_date || '' %>">
+                      <p class="form-hint">Students can take until 11:59 PM on this date. Clear to remove deadline.</p>
+                    </div>
+                    <div class="form-group">
+                      <label>Duration (minutes)</label>
+                      <input type="number" name="duration" min="1" max="600" value="<%= e.duration || '' %>" placeholder="e.g., 30">
+                    </div>
+                    <div class="form-group">
+                      <label>Status</label>
+                      <select name="active">
+                        <option value="1" <%= Number(e.active) !== 0 ? 'selected' : '' %>>Enabled (Open)</option>
+                        <option value="0" <%= Number(e.active) === 0 ? 'selected' : '' %>>Disabled (Closed)</option>
+                      </select>
+                      <p class="form-hint">Set to Enabled to reopen an expired/disabled quiz. Expired = due date in the past; Enabled alone won't reopen if due date is past — set a new future due date too.</p>
+                    </div>
+                    <div class="card-footer">
+                      <button type="button" class="btn btn-secondary" onclick="closeQuizEdit(<%= e.id %>)">Cancel</button>
+                      <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             <% }) %>
           </tbody>
         </table>
@@ -171,6 +202,8 @@
     document.querySelectorAll('.alert .close').forEach(btn => {
       btn.addEventListener('click', () => btn.closest('.alert').classList.remove('show'));
     });
+    function openQuizEdit(id){ document.getElementById('quiz-edit-'+id).classList.add('show'); }
+    function closeQuizEdit(id){ document.getElementById('quiz-edit-'+id).classList.remove('show'); }
     // Confirm dialog for destructive/important actions
     document.querySelectorAll('form[data-message]').forEach(f => {
       f.addEventListener('submit', function(e) {

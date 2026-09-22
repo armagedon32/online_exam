@@ -738,6 +738,36 @@ app.post('/admin/exams/set-active', isLoggedIn, isAdmin, (req, res) => {
   });
 });
 
+// Admin: Edit exam settings — re-enable + set new due date and duration in one step (fixes "expired and cannot enable")
+app.post('/admin/exams/edit', isLoggedIn, isAdmin, (req, res) => {
+  const examId = parseInt(req.body.id, 10);
+  let dueDate = (req.body.due_date || '').trim() || null;
+  let duration = req.body.duration != null && String(req.body.duration).trim() !== '' ? parseInt(req.body.duration, 10) : null;
+  const active = req.body.active === '0' ? 0 : 1;
+  if (!Number.isInteger(examId) || examId <= 0) return res.redirect('/admin/exams?error=' + encodeURIComponent('Invalid exam'));
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return res.redirect('/admin/exams?error=' + encodeURIComponent('Invalid due date (use YYYY-MM-DD)'));
+  if (duration != null && (!Number.isInteger(duration) || duration < 1 || duration > 600)) return res.redirect('/admin/exams?error=' + encodeURIComponent('Invalid duration (1-600 minutes)'));
+  const sc = scopeClause(req, 'created_by', 'e');
+  db.get('SELECT e.id, e.title FROM exams e WHERE e.id = ?' + sc.sql, [examId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/exams?error=' + encodeURIComponent('Exam not found'));
+    // Build dynamic SET clause so null/empty can clear or keep existing
+    const sets = [];
+    const vals = [];
+    sets.push('due_date = ?'); vals.push(dueDate);
+    if (duration != null) { sets.push('duration = ?'); vals.push(duration); }
+    sets.push('active = ?'); vals.push(active);
+    vals.push(examId);
+    db.run('UPDATE exams SET ' + sets.join(', ') + ' WHERE id = ?', vals, (err2) => {
+      if (err2) return res.redirect('/admin/exams?error=' + encodeURIComponent('Failed to update exam'));
+      if (active === 1) {
+        const dueMsg = dueDate ? (' New due: ' + dueDate + ' (until 11:59 PM).') : ' No due date.';
+        notifyAdminStudents(req.session.userId, 'exam', 'Exam Updated', 'The exam "' + row.title + '" has been updated by your instructor.' + dueMsg, '/student');
+      }
+      res.redirect('/admin/exams?success=' + encodeURIComponent('Exam "' + row.title + '" updated'));
+    });
+  });
+});
+
 // ===== QUIZ MODULE (separate from exams: own admin manager / create / take / submit / result) =====
 // ===== QUIZ MODULE (separate from exams so quizzes and exams never mix) =====
 
@@ -787,6 +817,35 @@ app.post('/admin/quizzes/set-active', isLoggedIn, isAdmin, (req, res) => {
         notifyAdminStudents(req.session.userId, 'quiz', 'Quiz Closed', 'The quiz "' + row.title + '" has been closed by your instructor.', '/student');
       }
       res.redirect('/admin/quizzes?success=' + encodeURIComponent(val === 0 ? ('Quiz "' + row.title + '" disabled') : ('Quiz "' + row.title + '" enabled')));
+    });
+  });
+});
+
+// Admin: Edit quiz settings — re-enable + set new due date and duration in one step (fixes "expired and cannot enable")
+app.post('/admin/quizzes/edit', isLoggedIn, isAdmin, (req, res) => {
+  const quizId = parseInt(req.body.id, 10);
+  let dueDate = (req.body.due_date || '').trim() || null;
+  let duration = req.body.duration != null && String(req.body.duration).trim() !== '' ? parseInt(req.body.duration, 10) : null;
+  const active = req.body.active === '0' ? 0 : 1;
+  if (!Number.isInteger(quizId) || quizId <= 0) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Invalid quiz'));
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Invalid due date (use YYYY-MM-DD)'));
+  if (duration != null && (!Number.isInteger(duration) || duration < 1 || duration > 600)) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Invalid duration (1-600 minutes)'));
+  const sc = scopeClause(req, 'created_by', 'z');
+  db.get('SELECT z.id, z.title FROM quizzes z WHERE z.id = ?' + sc.sql, [quizId].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Quiz not found'));
+    const sets = [];
+    const vals = [];
+    sets.push('due_date = ?'); vals.push(dueDate);
+    if (duration != null) { sets.push('duration = ?'); vals.push(duration); }
+    sets.push('active = ?'); vals.push(active);
+    vals.push(quizId);
+    db.run('UPDATE quizzes SET ' + sets.join(', ') + ' WHERE id = ?', vals, (err2) => {
+      if (err2) return res.redirect('/admin/quizzes?error=' + encodeURIComponent('Failed to update quiz'));
+      if (active === 1) {
+        const dueMsg = dueDate ? (' New due: ' + dueDate + ' (until 11:59 PM).') : ' No due date.';
+        notifyAdminStudents(req.session.userId, 'quiz', 'Quiz Updated', 'The quiz "' + row.title + '" has been updated by your instructor.' + dueMsg, '/student');
+      }
+      res.redirect('/admin/quizzes?success=' + encodeURIComponent('Quiz "' + row.title + '" updated'));
     });
   });
 });
@@ -1427,10 +1486,24 @@ app.post('/admin/users/update', isLoggedIn, isAdmin, (req, res) => {
   let subs = req.body.subjects;
   if (!subs) subs = [];
   else if (!Array.isArray(subs)) subs = [subs];
-  const subjectsJson = JSON.stringify(subs);
-  db.run('UPDATE users SET full_name=?, course=?, year_level=?, set_group=?, username=?, role=?, subjects=? WHERE id=?', [full_name.trim(), course.trim(), year_level, set_group, username.trim(), role, subjectsJson, id], (err) => {
-    if (err) return res.redirect('/admin/users?error=' + encodeURIComponent('Update failed: username may exist'));
-    res.redirect('/admin/users?success=' + encodeURIComponent('User updated'));
+  // Only allow assigning subjects that belong to this admin (prevents escalation)
+  getAdminSubjects(req, (errSub, mySubjects) => {
+    const allowed = new Set((mySubjects || []).map(s => s.name));
+    // Super admin can assign any; sub-admin only their own subjects
+    const filteredSubs = isSuperAdmin(req) ? subs : subs.filter(s => allowed.has(s));
+    const subjectsJson = JSON.stringify(filteredSubs);
+    // Scope check: sub-admin may only edit their own students; super may edit anyone
+    const sc = scopeClause(req, 'referrer_id', 'u');
+    const checkSql = 'SELECT id FROM users u WHERE u.id = ?' + sc.sql;
+    const checkParams = [id].concat(sc.params);
+    db.get(checkSql, checkParams, (errChk, row) => {
+      if (errChk) return res.redirect('/admin/users?error=' + encodeURIComponent('Database error'));
+      if (!row) return res.redirect('/admin/users?error=' + encodeURIComponent('User not found or not your student'));
+      db.run('UPDATE users SET full_name=?, course=?, year_level=?, set_group=?, username=?, role=?, subjects=? WHERE id=?', [full_name.trim(), course.trim(), year_level, set_group, username.trim(), role, subjectsJson, id], (err) => {
+        if (err) return res.redirect('/admin/users?error=' + encodeURIComponent('Update failed: username may exist'));
+        res.redirect('/admin/users?success=' + encodeURIComponent('User updated' + (filteredSubs.length !== subs.length ? ' (some subjects ignored — not yours)' : '')));
+      });
+    });
   });
 });
 
