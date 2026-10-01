@@ -246,7 +246,7 @@ db.run(`CREATE TABLE IF NOT EXISTS quiz_scores (
 function notifyUser(userId, type, title, body, link) {
   if (!userId) return;
   db.run('INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)',
-    [userId, type, title, body, link || null]);
+    [userId, type, title, body, link || null], (err) => { if (err) console.error('notifyUser:', err.message); });
 }
 function notifyAdminStudents(adminId, type, title, body, link) {
   db.all("SELECT id FROM users WHERE role='student' AND referrer_id = ?", [adminId], (err, students) => {
@@ -322,21 +322,50 @@ db.serialize(() => {
 
 
 db.serialize(() => {
+  const logDbErr = (what) => (err) => { if (err) console.error(what + ':', err.message); };
   // Make account id=1 the super admin
-  db.run("UPDATE users SET is_super=1, role='admin' WHERE id=1");
-  // Normalize usernames: trim, fix Unicode spaces (nbsp=160, ideographic=12288), collapse double spaces
-  db.run(`UPDATE users SET username = TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(username, char(160), ' '), char(12288), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '))
-          WHERE username != TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(username, char(160), ' '), char(12288), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '))`);
+  db.run("UPDATE users SET is_super=1, role='admin' WHERE id=1", logDbErr('boot is_super'));
+  // Normalize usernames: trim, fix Unicode spaces (nbsp=160, ideographic=12288), collapse double spaces.
+  // Done row-by-row with a collision check: if two accounts would normalize to the SAME
+  // username, updating both would violate users.username UNIQUE and crash the process
+  // (node-sqlite3 emits 'error' on callback-less Statements). So skip conflicting rows.
+  const normalizeUsername = (name) => {
+    let s = String(name);
+    s = s.replace(/\u00A0/g, ' ').replace(/\u3000/g, ' ');
+    for (let i = 0; i < 4; i++) s = s.replace(/  /g, ' ');
+    return s.trim();
+  };
+  db.all("SELECT id, username FROM users", [], (err, rows) => {
+    if (err) return console.error('boot username scan:', err.message);
+    const pending = (rows || []).filter(r => r.username != null && normalizeUsername(r.username) !== r.username);
+    (function next(i) {
+      if (i >= pending.length) return;
+      const r = pending[i];
+      const target = normalizeUsername(r.username);
+      db.get("SELECT id FROM users WHERE username = ? AND id != ?", [target, r.id], (e2, clash) => {
+        if (e2) { console.error('boot username check id=' + r.id + ':', e2.message); return next(i + 1); }
+        if (clash) {
+          console.error('boot username normalize SKIPPED for id=' + r.id + ' ("' + r.username + '" -> "' + target + '"): target already taken by id=' + clash.id);
+          return next(i + 1);
+        }
+        db.run("UPDATE users SET username = ? WHERE id = ?", [target, r.id], (e3) => {
+          if (e3) console.error('boot username normalize id=' + r.id + ':', e3.message);
+          next(i + 1);
+        });
+      });
+    })(0);
+  });
   // Existing content owned by super admin (id=1)
-  db.run("UPDATE subjects SET created_by=1 WHERE created_by IS NULL");
-  db.run("UPDATE questions SET created_by=1 WHERE created_by IS NULL");
-  db.run("UPDATE exams SET created_by=1 WHERE created_by IS NULL");
+  db.run("UPDATE subjects SET created_by=1 WHERE created_by IS NULL", logDbErr('boot subjects owner'));
+  db.run("UPDATE questions SET created_by=1 WHERE created_by IS NULL", logDbErr('boot questions owner'));
+  db.run("UPDATE exams SET created_by=1 WHERE created_by IS NULL", logDbErr('boot exams owner'));
   // Ensure admin accounts have a signup token
   db.all("SELECT id, username, signup_token FROM users WHERE role='admin'", [], (err, admins) => {
+    if (err) return console.error('boot admin token scan:', err.message);
     (admins || []).forEach(a => {
       if (!a.signup_token) {
         const token = require('crypto').randomBytes(12).toString('hex');
-        db.run("UPDATE users SET signup_token=? WHERE id=?", [token, a.id]);
+        db.run("UPDATE users SET signup_token=? WHERE id=?", [token, a.id], logDbErr('boot admin token id=' + a.id));
       }
     });
   });
