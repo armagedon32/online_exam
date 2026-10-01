@@ -109,14 +109,48 @@
           <% } %>
           <div style="margin-top: var(--space-3); display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center;">
             <% if (mySub.status !== 'done' && !isClosed) { %>
+              <button class="btn btn-edit btn-sm" type="button" onclick="document.getElementById('editSubForm').classList.toggle('show');">✏️ Edit Submission</button>
               <form action="/student/assignments/<%= assignment.id %>/withdraw" method="post" data-message="Withdraw your submission?<br><small>You will be able to resubmit.</small>" data-confirm-text="Withdraw" data-danger="true">
                 <button class="btn btn-danger btn-sm" type="submit">Withdraw Submission</button>
               </form>
+            <% } else if (mySub.status === 'done') { %>
+              <span class="badge badge-success">🔒 Locked — graded by your teacher, editing is disabled</span>
             <% } %>
             <span class="cell-muted" style="font-size:var(--text-sm);">Submitted: <%= mySub.submitted_at %></span>
           </div>
         </div>
       </div>
+      <% if (mySub.status !== 'done' && !isClosed) { %>
+      <div class="modal" id="editSubForm" onclick="if(event.target===this) this.classList.remove('show')">
+        <div class="modal-card">
+          <div class="modal-header"><h3>Edit Submission</h3><button class="close-modal" onclick="document.getElementById('editSubForm').classList.remove('show')">&times;</button></div>
+          <form action="/student/assignments/<%= assignment.id %>/edit" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+              <label>Your Answer / Response <% if (assignment.require_answer) { %><span class="badge badge-danger">Required</span><% } %></label>
+              <textarea name="text_response" rows="5" placeholder="Type your answer here..."><%= mySub.text_response || '' %></textarea>
+            </div>
+            <div class="form-group">
+              <label>Video Link <% if (assignment.require_video) { %><span class="badge badge-danger">Required</span><% } else { %>(optional)<% } %></label>
+              <input type="url" name="link_url" placeholder="https://youtube.com/... or any link" value="<%= mySub.link_url || '' %>">
+            </div>
+            <div class="form-group">
+              <label>Upload File <% if (assignment.require_file) { %><span class="badge badge-danger">Required</span><% } else { %>(optional, max 10MB)<% } %></label>
+              <% if (mySub.file_name) { %>
+                <p style="font-size:var(--text-sm); margin-bottom:var(--space-2);">📎 Current: <strong><%= mySub.file_name %></strong>
+                  <label style="display:inline; margin-left:var(--space-2); font-size:var(--text-xs);"><input type="checkbox" name="remove_file" value="1"> remove</label>
+                </p>
+              <% } %>
+              <input type="file" name="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.zip,.mp4,.mp3">
+              <p class="hint" style="color:var(--text-muted); font-size:var(--text-xs); margin-top:var(--space-2);">Leave empty to keep the current file. Uploading a new file replaces it.</p>
+            </div>
+            <div class="card-footer">
+              <button type="button" class="btn btn-secondary" onclick="document.getElementById('editSubForm').classList.remove('show')">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <% } %>
     <% } else if (isClosed) { %>
       <div class="card">
         <div class="card-body" style="padding: var(--space-6); text-align:center;">

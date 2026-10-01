@@ -1861,7 +1861,50 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
   });
 });
 
-// --- Student: Withdraw submission ---
+// --- Student: Edit own submission (allowed only while NOT graded and NOT past due) ---
+app.post('/student/assignments/:id/edit', isLoggedIn, uploadAssignment.single('file'), (req, res) => {
+  const aId = parseInt(req.params.id, 10);
+  const { text_response, link_url, remove_file } = req.body;
+  if (!aId) return res.redirect('/student/assignments');
+  db.get('SELECT * FROM assignments WHERE id = ?', [aId], (err, assignment) => {
+    if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
+    db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.userId], (errU, u) => {
+      if (errU) return res.status(500).send('Database error');
+      let mySubjects = [];
+      try { mySubjects = u && u.subjects ? JSON.parse(u.subjects) : []; } catch(e) { mySubjects = []; }
+      const ownerId = u?.referrer_id ?? null;
+      if (!ownerId) return res.status(403).send('Access denied: no instructor assigned');
+      if (assignment.created_by && assignment.created_by !== ownerId) return res.status(403).send('Access denied');
+      if (mySubjects.length && assignment.subject && !mySubjects.includes(assignment.subject)) return res.status(403).send('Access denied');
+      if (isPastDue(assignment.due_date)) {
+        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Editing is not allowed — the due date has passed'));
+      }
+      db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2, existing) => {
+        if (err2 || !existing) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('No submission to edit — please submit first'));
+        if (existing.status === 'done' || (existing.score !== null && existing.score !== undefined && String(existing.score).trim() !== '')) {
+          return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Locked — your teacher has already checked/graded this. You can no longer edit it.'));
+        }
+        const text = (text_response || '').trim() || null;
+        const link = (link_url || '').trim() || null;
+        let fileName = existing.file_name;
+        let fileData = existing.file_data;
+        if (req.file) { fileName = req.file.originalname; fileData = req.file.buffer; }
+        else if (remove_file === '1') { fileName = null; fileData = null; }
+        if (!text && !fileData && !link) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Please provide a response (text, file, or link)'));
+        if (assignment.require_answer && !text) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Your Answer is required for this assignment'));
+        if (assignment.require_video && !link) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('A video/link is required for this assignment'));
+        if (assignment.require_file && !fileData) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Uploading a file is required for this assignment'));
+        db.run('UPDATE submissions SET text_response = ?, file_name = ?, file_data = ?, link_url = ?, submitted_at = CURRENT_TIMESTAMP WHERE assignment_id = ? AND student_id = ?',
+          [text, fileName, fileData, link, aId, req.session.userId], (err3) => {
+            if (err3) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to update submission'));
+            res.redirect('/student/assignments/' + aId + '?success=' + encodeURIComponent('Submission updated successfully'));
+          });
+      });
+    });
+  });
+});
+
+// --- Student: Withdraw submission (blocked when graded or past due) ---
 app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
   const aId = parseInt(req.params.id, 10);
   if (!aId) return res.redirect('/student/assignments');
@@ -1870,9 +1913,15 @@ app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
     if (isPastDue(assignment.due_date)) {
       return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Withdrawal is not allowed — the due date has passed'));
     }
-    db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2) => {
-      if (err2) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
-      res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+    db.get('SELECT status, score FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (errS, sub) => {
+      if (errS || !sub) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('No submission to withdraw'));
+      if (sub.status === 'done' || (sub.score !== null && sub.score !== undefined && String(sub.score).trim() !== '')) {
+        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Locked — your teacher has already checked/graded this. Withdrawal is not allowed.'));
+      }
+      db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2) => {
+        if (err2) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
+        res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+      });
     });
   });
 });
