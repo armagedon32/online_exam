@@ -121,11 +121,9 @@ db.serialize(() => {
     db.run("ALTER TABLE users ADD COLUMN referrer_id INTEGER", () => {});
     db.run("ALTER TABLE users ADD COLUMN signup_token TEXT", () => {});
     db.run("ALTER TABLE users ADD COLUMN student_id TEXT", () => {});
-    // Student ID must be unique when present (NULLs allowed so old rows/admins are unaffected).
-    // Backs up the signup duplicate check against race conditions.
-    db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id)", (err) => {
-      if (err) console.error('student_id index:', err.message);
-    });
+    // NOTE: the UNIQUE index on student_id is created AFTER the boot duplicate
+    // cleanup below (a DB that already has dupes would fail index creation,
+    // so cleanup must run first, then the index).
     db.run("ALTER TABLE users ADD COLUMN is_super INTEGER DEFAULT 0", () => {});
     db.run("ALTER TABLE subjects ADD COLUMN created_by INTEGER", () => {});
     db.run("ALTER TABLE questions ADD COLUMN created_by INTEGER", () => {});
@@ -374,6 +372,58 @@ db.serialize(() => {
         db.run("UPDATE users SET signup_token=? WHERE id=?", [token, a.id], logDbErr('boot admin token id=' + a.id));
       }
     });
+  });
+});
+
+// Auto-cleanup duplicate Student IDs on boot: when two+ accounts share the SAME
+// student_id, the NEWER account(s) are deleted automatically and the OLDEST (lowest id)
+// is kept. Dependent records of deleted accounts are removed too. Runs sequentially
+// with error callbacks everywhere so it can never crash the boot.
+// Created AFTER the cleanup below finishes (never before: queued deletes run
+// after already-queued statements, so creating it earlier would fail on dupes).
+function ensureStudentIdIndex() {
+  db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id)", (err) => {
+    if (err) console.error('student_id index:', err.message);
+    else console.log('student_id unique index ensured');
+  });
+}
+db.serialize(() => {
+  const logDbErr = (what) => (err) => { if (err) console.error(what + ':', err.message); };
+  db.all("SELECT student_id, COUNT(*) as cnt FROM users WHERE student_id IS NOT NULL AND student_id != '' GROUP BY student_id HAVING cnt > 1", [], (err, dupes) => {
+    if (err) { console.error('boot student_id dupe scan:', err.message); ensureStudentIdIndex(); return; }
+    if (!dupes || !dupes.length) { ensureStudentIdIndex(); return; }
+    console.log('boot student_id cleanup: ' + dupes.length + ' duplicated ID(s) found');
+    (function nextGroup(gi) {
+      if (gi >= dupes.length) { ensureStudentIdIndex(); return; }
+      const sid = dupes[gi].student_id;
+      db.all("SELECT id, username, full_name FROM users WHERE student_id = ? ORDER BY id ASC", [sid], (e2, rows) => {
+        if (e2) { console.error('boot student_id group ' + sid + ':', e2.message); return nextGroup(gi + 1); }
+        const keep = rows[0];
+        const victims = rows.slice(1);
+        console.log('boot student_id "' + sid + '": keeping oldest id=' + keep.id + ' (' + (keep.full_name || keep.username) + '), auto-deleting newer id(s): ' + victims.map(v => v.id).join(','));
+        (function nextVictim(vi) {
+          if (vi >= victims.length) return nextGroup(gi + 1);
+          const vid = victims[vi].id;
+          const steps = [
+            ['DELETE FROM scores WHERE student_id=?', 'scores'],
+            ['DELETE FROM quiz_scores WHERE student_id=?', 'quiz_scores'],
+            ['DELETE FROM submissions WHERE student_id=?', 'submissions'],
+            ['DELETE FROM lesson_progress WHERE student_id=?', 'lesson_progress'],
+            ['DELETE FROM notifications WHERE user_id=?', 'notifications'],
+            ['DELETE FROM messages WHERE sender_id=? OR recipient_id=?', 'messages'],
+            ['DELETE FROM users WHERE id=?', 'users']
+          ];
+          (function nextStep(si) {
+            if (si >= steps.length) return nextVictim(vi + 1);
+            const params = steps[si][0].includes('sender_id') ? [vid, vid] : [vid];
+            db.run(steps[si][0], params, (e3) => {
+              if (e3) console.error('boot student_id cleanup id=' + vid + ' ' + steps[si][1] + ':', e3.message);
+              nextStep(si + 1);
+            });
+          })(0);
+        })(0);
+      });
+    })(0);
   });
 });
 
