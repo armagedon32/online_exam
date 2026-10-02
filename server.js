@@ -120,6 +120,12 @@ db.serialize(() => {
     db.run("ALTER TABLE users ADD COLUMN theme TEXT", () => {});
     db.run("ALTER TABLE users ADD COLUMN referrer_id INTEGER", () => {});
     db.run("ALTER TABLE users ADD COLUMN signup_token TEXT", () => {});
+    db.run("ALTER TABLE users ADD COLUMN student_id TEXT", () => {});
+    // Student ID must be unique when present (NULLs allowed so old rows/admins are unaffected).
+    // Backs up the signup duplicate check against race conditions.
+    db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id)", (err) => {
+      if (err) console.error('student_id index:', err.message);
+    });
     db.run("ALTER TABLE users ADD COLUMN is_super INTEGER DEFAULT 0", () => {});
     db.run("ALTER TABLE subjects ADD COLUMN created_by INTEGER", () => {});
     db.run("ALTER TABLE questions ADD COLUMN created_by INTEGER", () => {});
@@ -494,20 +500,32 @@ app.post('/signup', (req, res) => {
   else if (!Array.isArray(selectedSubjects)) selectedSubjects = [selectedSubjects];
   if (!username || !password || !full_name || !course || !year_level || !set_group) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('All fields required'));
   if (!selectedSubjects.length) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Select at least one subject'));
+  // Student ID is the anti-duplicate key: trimmed + uppercased so "abc123" and "ABC123" match
+  const studentId = String(req.body.student_id || '').trim().toUpperCase();
+  if (!studentId) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Student ID is required'));
   const subjectsJson = JSON.stringify(selectedSubjects);
   const trimmedFullName = full_name.trim();
+  const signupFail = (msg) => res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent(msg));
 
-  // Case-insensitive duplicate check on full_name
-  db.get('SELECT id, full_name, created_at FROM users WHERE LOWER(full_name) = LOWER(?)', [trimmedFullName], (err, existing) => {
-    if (err) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Database error'));
-    if (existing) {
-      return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Name already registered: ' + existing.full_name));
+  // Duplicate check on Student ID first (strongest key), then full_name
+  db.get('SELECT id, full_name, username FROM users WHERE student_id = ? AND student_id IS NOT NULL AND student_id != ?', [studentId, ''], (err, dupeId) => {
+    if (err) return signupFail('Database error');
+    if (dupeId) {
+      return signupFail('Student ID "' + studentId + '" is already registered (account: ' + (dupeId.full_name || dupeId.username) + '). Please login instead of creating a new account.');
     }
+    db.get('SELECT id, full_name, created_at FROM users WHERE LOWER(full_name) = LOWER(?)', [trimmedFullName], (err2, existing) => {
+      if (err2) return signupFail('Database error');
+      if (existing) {
+        return signupFail('Name already registered: ' + existing.full_name);
+      }
 
     // Determine referring admin from token
     const confirmSignup = (referrerId) => {
-      db.run('INSERT INTO users (username, password, full_name, course, year_level, set_group, subjects, role, referrer_id) VALUES (?, ?, ?, ?, ?, ?, ?, "student", ?)', [username, password, trimmedFullName, course.trim(), year_level, set_group, subjectsJson, referrerId], function(err) {
-        if (err) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Username already exists'));
+      db.run('INSERT INTO users (username, password, full_name, student_id, course, year_level, set_group, subjects, role, referrer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "student", ?)', [username, password, trimmedFullName, studentId, course.trim(), year_level, set_group, subjectsJson, referrerId], function(err) {
+        if (err) {
+          if (String(err.message || '').includes('student_id')) return signupFail('Student ID "' + studentId + '" is already registered. Please login instead of creating a new account.');
+          return signupFail('Username already exists');
+        }
         req.session.userId = this.lastID;
         req.session.username = username;
         req.session.full_name = trimmedFullName;
@@ -529,7 +547,8 @@ app.post('/signup', (req, res) => {
       // No token -> register under the super admin (main admin)
       confirmSignup(1);
     }
-  });
+    }); // end full_name duplicate check
+  }); // end student_id duplicate check
 });
 
 app.get('/logout', (req, res) => {
@@ -1472,14 +1491,14 @@ app.get('/admin/users', isLoggedIn, isAdmin, (req, res) => {
   // Sub-admin only sees their own students; super sees everyone.
   const ownerScope = superAdmin ? { sql: '', params: [] }
                                : { sql: " AND role='student' AND referrer_id = ? ", params: [req.session.userId] };
-  const searchWhere = search ? ' AND (full_name LIKE ? OR username LIKE ? OR course LIKE ? OR year_level LIKE ? OR set_group LIKE ? OR subjects LIKE ? OR role LIKE ?)' : '';
-  const searchParams = search ? [like, like, like, like, like, like, like] : [];
+  const searchWhere = search ? ' AND (full_name LIKE ? OR username LIKE ? OR student_id LIKE ? OR course LIKE ? OR year_level LIKE ? OR set_group LIKE ? OR subjects LIKE ? OR role LIKE ?)' : '';
+  const searchParams = search ? [like, like, like, like, like, like, like, like] : [];
   const where = ' WHERE 1=1' + ownerScope.sql + searchWhere;
   const params = ownerScope.params.concat(searchParams);
   db.get('SELECT COUNT(*) as cnt FROM users ' + where, params, (err, cntRow) => {
     const total = cntRow ? cntRow.cnt : 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    const query = 'SELECT id, username, full_name, course, year_level, set_group, subjects, role, referrer_id, is_locked, failed_attempts, created_at FROM users ' + where + ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    const query = 'SELECT id, username, full_name, student_id, course, year_level, set_group, subjects, role, referrer_id, is_locked, failed_attempts, created_at FROM users ' + where + ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     const qParams = params.concat([limit, offset]);
     db.all(query, qParams, (err2, users) => {
       if (err2) return res.status(500).send('Database error');
@@ -1527,6 +1546,8 @@ app.post('/admin/users/update', isLoggedIn, isAdmin, (req, res) => {
   let subs = req.body.subjects;
   if (!subs) subs = [];
   else if (!Array.isArray(subs)) subs = [subs];
+  // Student ID: normalize like signup; empty allowed only for admins (students must keep one)
+  const rawSid = String(req.body.student_id || '').trim().toUpperCase();
   // Only allow assigning subjects that belong to this admin (prevents escalation)
   getAdminSubjects(req, (errSub, mySubjects) => {
     const allowed = new Set((mySubjects || []).map(s => s.name));
@@ -1535,15 +1556,31 @@ app.post('/admin/users/update', isLoggedIn, isAdmin, (req, res) => {
     const subjectsJson = JSON.stringify(filteredSubs);
     // Scope check: sub-admin may only edit their own students; super may edit anyone
     const sc = scopeClause(req, 'referrer_id', 'u');
-    const checkSql = 'SELECT id FROM users u WHERE u.id = ?' + sc.sql;
+    const checkSql = 'SELECT id, role FROM users u WHERE u.id = ?' + sc.sql;
     const checkParams = [id].concat(sc.params);
     db.get(checkSql, checkParams, (errChk, row) => {
       if (errChk) return res.redirect('/admin/users?error=' + encodeURIComponent('Database error'));
       if (!row) return res.redirect('/admin/users?error=' + encodeURIComponent('User not found or not your student'));
-      db.run('UPDATE users SET full_name=?, course=?, year_level=?, set_group=?, username=?, role=?, subjects=? WHERE id=?', [full_name.trim(), course.trim(), year_level, set_group, username.trim(), role, subjectsJson, id], (err) => {
-        if (err) return res.redirect('/admin/users?error=' + encodeURIComponent('Update failed: username may exist'));
-        res.redirect('/admin/users?success=' + encodeURIComponent('User updated' + (filteredSubs.length !== subs.length ? ' (some subjects ignored — not yours)' : '')));
-      });
+      const isStudent = (role || row.role) === 'student';
+      if (isStudent && !rawSid) return res.redirect('/admin/users?error=' + encodeURIComponent('Student ID is required for students'));
+      const doUpdate = () => {
+        db.run('UPDATE users SET full_name=?, student_id=?, course=?, year_level=?, set_group=?, username=?, role=?, subjects=? WHERE id=?', [full_name.trim(), rawSid || null, course.trim(), year_level, set_group, username.trim(), role, subjectsJson, id], (err) => {
+          if (err) {
+            if (String(err.message || '').includes('student_id')) return res.redirect('/admin/users?error=' + encodeURIComponent('Student ID "' + rawSid + '" is already registered to another account'));
+            return res.redirect('/admin/users?error=' + encodeURIComponent('Update failed: username may exist'));
+          }
+          res.redirect('/admin/users?success=' + encodeURIComponent('User updated' + (filteredSubs.length !== subs.length ? ' (some subjects ignored — not yours)' : '')));
+        });
+      };
+      if (rawSid) {
+        db.get('SELECT id FROM users WHERE student_id = ? AND id != ?', [rawSid, id], (errD, dupe) => {
+          if (errD) return res.redirect('/admin/users?error=' + encodeURIComponent('Database error'));
+          if (dupe) return res.redirect('/admin/users?error=' + encodeURIComponent('Student ID "' + rawSid + '" is already registered to another account'));
+          doUpdate();
+        });
+      } else {
+        doUpdate();
+      }
     });
   });
 });

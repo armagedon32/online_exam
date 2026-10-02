@@ -140,7 +140,7 @@
               <tr>
                 <td><%= u.id %></td>
                 <td class="cell-primary"><%= u.full_name || '—' %></td>
-                <td><%= u.username %></td>
+                <td><%= u.username %><% if (u.student_id) { %><br><small class="cell-muted">ID: <%= u.student_id %></small><% } %></td>
                 <td><%= u.course || '—' %></td>
                 <td class="text-center"><span class="badge badge-warning"><%= u.year_level || '—' %></span></td>
                 <td class="text-center"><span class="badge badge-set"><%= u.set_group || '—' %></span></td>
@@ -181,6 +181,7 @@
                   <div class="modal-header"><h3>View — <%= u.username %></h3><button class="close-modal" onclick="closeView(<%= u.id %>)">&times;</button></div>
                   <div class="view-row"><span class="view-label">Full Name</span><span><%= u.full_name || '—' %></span></div>
                   <div class="view-row"><span class="view-label">Username</span><span><%= u.username %></span></div>
+                  <div class="view-row"><span class="view-label">Student ID</span><span><%= u.student_id || '—' %></span></div>
                   <div class="view-row"><span class="view-label">Course</span><span><%= u.course || '—' %></span></div>
                   <div class="view-row"><span class="view-label">Year</span><span><%= u.year_level || '—' %></span></div>
                   <div class="view-row"><span class="view-label">SET</span><span><%= u.set_group || '—' %></span></div>
@@ -216,6 +217,7 @@
                       </select>
                     </div>
                     <div class="form-group"><label>Username</label><input type="text" name="username" value="<%= u.username %>" required></div>
+                    <div class="form-group"><label>Student ID</label><input type="text" name="student_id" value="<%= u.student_id || '' %>" placeholder="e.g., 2021-00001" style="text-transform:uppercase;" <%= u.role==='student' ? 'required' : '' %>></div>
                     <div class="form-group"><label>Role</label>
                       <select name="role"><option value="student" <%= u.role==='student'?'selected':'' %>>student</option><option value="admin" <%= u.role==='admin'?'selected':'' %>>admin</option></select>
                     </div>
