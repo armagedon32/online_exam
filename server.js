@@ -373,6 +373,12 @@ db.serialize(() => {
       });
     })(0);
   });
+  // Lock every student account that has no Student ID (admins never locked by this).
+  // They see "locked: no Student ID" at login; admin unlocks them by assigning the ID.
+  db.run("UPDATE users SET failed_attempts=3, is_locked=1 WHERE role='student' AND (student_id IS NULL OR TRIM(student_id) = '')", function(err) {
+    if (err) return console.error('boot lock-no-id:', err.message);
+    if (this && this.changes) console.log('boot lock-no-id: locked ' + this.changes + ' student(s) without Student ID');
+  });
   // Existing content owned by super admin (id=1)
   db.run("UPDATE subjects SET created_by=1 WHERE created_by IS NULL", logDbErr('boot subjects owner'));
   db.run("UPDATE questions SET created_by=1 WHERE created_by IS NULL", logDbErr('boot questions owner'));
@@ -527,6 +533,9 @@ app.post('/login', (req, res) => {
     if (err) return res.redirect('/login?error=' + encodeURIComponent('Database error'));
     if (!user) return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again'));
     if (user.is_locked) {
+      if (user.role === 'student' && (!user.student_id || !String(user.student_id).trim())) {
+        return res.redirect('/login?error=' + encodeURIComponent('Account locked: no Student ID on file') + '&warning=' + encodeURIComponent('Ask your teacher to add your Student ID to your account, then login again'));
+      }
       return res.redirect('/login?error=' + encodeURIComponent('Account locked after 3 failed attempts') + '&warning=' + encodeURIComponent('Contact admin to unlock/reset your account'));
     }
     if (user.password !== password) {
@@ -540,6 +549,13 @@ app.post('/login', (req, res) => {
           return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again') + '&warning=' + encodeURIComponent('Attempt ' + attempts + '/3 — after 3, account will lock'));
         });
       }
+      return;
+    }
+    // Students must have a Student ID: lock the account on login when missing
+    if (user.role === 'student' && (!user.student_id || !String(user.student_id).trim())) {
+      db.run('UPDATE users SET failed_attempts=3, is_locked=1 WHERE id=?', [user.id], () => {
+        return res.redirect('/login?error=' + encodeURIComponent('Account locked: no Student ID on file') + '&warning=' + encodeURIComponent('Ask your teacher to add your Student ID to your account, then login again'));
+      });
       return;
     }
     // success — reset attempts
@@ -1782,12 +1798,15 @@ app.post('/admin/users/update', isLoggedIn, isAdmin, (req, res) => {
       const isStudent = (role || row.role) === 'student';
       if (isStudent && !rawSid) return res.redirect('/admin/users?error=' + encodeURIComponent('Student ID is required for students'));
       const doUpdate = () => {
-        db.run('UPDATE users SET full_name=?, student_id=?, course=?, year_level=?, set_group=?, username=?, role=?, subjects=? WHERE id=?', [full_name.trim(), rawSid || null, course.trim(), year_level, set_group, username.trim(), role, subjectsJson, id], (err) => {
+        // Assigning an official Student ID verifies identity: clear any lock (e.g. missing-ID lock)
+        const unlock = (isStudent && rawSid) ? ', is_locked=0, failed_attempts=0' : '';
+        db.run('UPDATE users SET full_name=?, student_id=?, course=?, year_level=?, set_group=?, username=?, role=?, subjects=?' + unlock + ' WHERE id=?', [full_name.trim(), rawSid || null, course.trim(), year_level, set_group, username.trim(), role, subjectsJson, id], (err) => {
           if (err) {
             if (String(err.message || '').includes('student_id')) return res.redirect('/admin/users?error=' + encodeURIComponent('Student ID "' + rawSid + '" is already registered to another account'));
             return res.redirect('/admin/users?error=' + encodeURIComponent('Update failed: username may exist'));
           }
-          res.redirect('/admin/users?success=' + encodeURIComponent('User updated' + (filteredSubs.length !== subs.length ? ' (some subjects ignored — not yours)' : '')));
+          const note = (isStudent && rawSid) ? ' (unlocked — Student ID assigned)' : '';
+          res.redirect('/admin/users?success=' + encodeURIComponent('User updated' + note + (filteredSubs.length !== subs.length ? ' (some subjects ignored — not yours)' : '')));
         });
       };
       if (rawSid) {
