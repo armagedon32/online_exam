@@ -25,6 +25,18 @@ app.use(session({
   cookie: { httpOnly: true, secure: false, maxAge: 24 * 60 * 60 * 1000, path: '/' }
 }));
 
+// Gate: students without a Student ID can only visit Profile (to add it) or Logout.
+// Anything else redirects to Profile until they save their ID.
+app.use((req, res, next) => {
+  if (req.session && req.session.role === 'student' && req.session.needs_id) {
+    if (req.path !== '/student/profile' && req.path !== '/logout') {
+      const msg = encodeURIComponent('Please add your Student ID first to unlock the rest of the portal');
+      return res.redirect('/student/profile?warning=' + msg);
+    }
+  }
+  next();
+});
+
 // Debug route
 app.get('/debug-session', (req, res) => {
   const session = req.session;
@@ -373,11 +385,11 @@ db.serialize(() => {
       });
     })(0);
   });
-  // Lock every student account that has no Student ID (admins never locked by this).
-  // They see "locked: no Student ID" at login; admin unlocks them by assigning the ID.
-  db.run("UPDATE users SET failed_attempts=3, is_locked=1 WHERE role='student' AND (student_id IS NULL OR TRIM(student_id) = '')", function(err) {
-    if (err) return console.error('boot lock-no-id:', err.message);
-    if (this && this.changes) console.log('boot lock-no-id: locked ' + this.changes + ' student(s) without Student ID');
+  // Report (never lock) students that still have no Student ID. They log in under
+  // grace and are forced to Profile until they save their ID (see needs_id gate).
+  db.get("SELECT COUNT(*) as cnt FROM users WHERE role='student' AND (student_id IS NULL OR TRIM(student_id) = '')", [], (err, row) => {
+    if (err) return console.error('boot no-id count:', err.message);
+    if (row && row.cnt) console.log('boot no-id: ' + row.cnt + ' student(s) still without Student ID (grace mode: forced to Profile on login)');
   });
   // Existing content owned by super admin (id=1)
   db.run("UPDATE subjects SET created_by=1 WHERE created_by IS NULL", logDbErr('boot subjects owner'));
@@ -532,11 +544,12 @@ app.post('/login', (req, res) => {
   db.get('SELECT * FROM users WHERE username = ? OR (student_id IS NOT NULL AND student_id != ? AND student_id = ?)', [uname, '', sidGuess], (err, user) => {
     if (err) return res.redirect('/login?error=' + encodeURIComponent('Database error'));
     if (!user) return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again'));
-    if (user.is_locked) {
-      if (user.role === 'student' && (!user.student_id || !String(user.student_id).trim())) {
-        return res.redirect('/login?error=' + encodeURIComponent('Account locked: no Student ID on file') + '&warning=' + encodeURIComponent('Ask your teacher to add your Student ID to your account, then login again'));
-      }
+    const missingId = user.role === 'student' && (!user.student_id || !String(user.student_id).trim());
+    if (user.is_locked && !missingId) {
       return res.redirect('/login?error=' + encodeURIComponent('Account locked after 3 failed attempts') + '&warning=' + encodeURIComponent('Contact admin to unlock/reset your account'));
+    }
+    if (user.is_locked && missingId && user.password !== password) {
+      return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again'));
     }
     if (user.password !== password) {
       const attempts = (user.failed_attempts || 0) + 1;
@@ -551,18 +564,16 @@ app.post('/login', (req, res) => {
       }
       return;
     }
-    // Students must have a Student ID: lock the account on login when missing
-    if (user.role === 'student' && (!user.student_id || !String(user.student_id).trim())) {
-      db.run('UPDATE users SET failed_attempts=3, is_locked=1 WHERE id=?', [user.id], () => {
-        return res.redirect('/login?error=' + encodeURIComponent('Account locked: no Student ID on file') + '&warning=' + encodeURIComponent('Ask your teacher to add your Student ID to your account, then login again'));
-      });
-      return;
-    }
+    // Students without a Student ID log in under grace: full access is restored,
+    // but they are forced to Profile until they save their ID (see needs_id gate below).
+    // This also clears any stale missing-ID lock from before.
+    const needsId = missingId;
     // success — reset attempts
     db.run('UPDATE users SET failed_attempts=0, is_locked=0 WHERE id=?', [user.id], () => {
       req.session.userId = user.id;
       req.session.username = user.username;
       req.session.student_id = user.student_id || null;
+      req.session.needs_id = needsId;
       req.session.full_name = user.full_name;
       req.session.course = user.course;
       req.session.year_level = user.year_level;
@@ -572,7 +583,7 @@ app.post('/login', (req, res) => {
       req.session.role = user.role;
       req.session.theme = user.theme || 'system';
       res.cookie('theme', user.theme || 'system', { maxAge: 31536000000, path: '/' });
-      req.session.save(() => res.redirect('/'));
+      req.session.save(() => res.redirect(needsId ? '/student/profile?warning=' + encodeURIComponent('Please add your Student ID to unlock your dashboard, exams and quizzes') : '/'));
     });
   });
 });
@@ -626,6 +637,7 @@ app.post('/signup', (req, res) => {
         req.session.userId = this.lastID;
         req.session.username = username;
         req.session.student_id = studentId || null;
+        req.session.needs_id = false;
         req.session.full_name = trimmedFullName;
         req.session.set_group = set_group;
         req.session.role = 'student';
@@ -1910,6 +1922,7 @@ app.post('/student/profile', isLoggedIn, (req, res) => {
         }
         req.session.full_name = full_name.trim();
         req.session.student_id = studentId;
+        req.session.needs_id = false;
         req.session.course = course.trim();
         req.session.year_level = year_level;
         req.session.set_group = set_group;
