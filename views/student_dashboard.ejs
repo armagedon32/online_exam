@@ -41,7 +41,7 @@
     <header class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
       <div>
         <h1>Welcome, <%= user.full_name || user.username %> 👋</h1>
-        <p><%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %> · <%= user.username %></p>
+        <p><%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %><%= user.student_id ? ' · ID: ' + user.student_id : '' %></p>
       </div>
       <div class="date-badge" style="font-size: var(--text-sm); color: var(--text-muted); background: var(--bg-secondary); border: 1px solid var(--border-light); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md);">
         <%= new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %>

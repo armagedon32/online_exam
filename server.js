@@ -519,9 +519,11 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  const uname = String(username || '').replace(/\u00A0/g, ' ').trim().replace(/\s{2,}/g, ' ');
-  if (!uname || !password) return res.redirect('/login?error=' + encodeURIComponent('Username and password required'));
-  db.get('SELECT * FROM users WHERE username = ?', [uname], (err, user) => {
+  const uname = String(username || '').replace(/ /g, ' ').trim().replace(/\s{2,}/g, ' ');
+  if (!uname || !password) return res.redirect('/login?error=' + encodeURIComponent('Username / Student ID and password required'));
+  // Login accepts either Username OR Student ID (students often only remember their ID)
+  const sidGuess = uname.toUpperCase();
+  db.get('SELECT * FROM users WHERE username = ? OR (student_id IS NOT NULL AND student_id != ? AND student_id = ?)', [uname, '', sidGuess], (err, user) => {
     if (err) return res.redirect('/login?error=' + encodeURIComponent('Database error'));
     if (!user) return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again'));
     if (user.is_locked) {
@@ -544,6 +546,7 @@ app.post('/login', (req, res) => {
     db.run('UPDATE users SET failed_attempts=0, is_locked=0 WHERE id=?', [user.id], () => {
       req.session.userId = user.id;
       req.session.username = user.username;
+      req.session.student_id = user.student_id || null;
       req.session.full_name = user.full_name;
       req.session.course = user.course;
       req.session.year_level = user.year_level;
@@ -606,6 +609,7 @@ app.post('/signup', (req, res) => {
         }
         req.session.userId = this.lastID;
         req.session.username = username;
+        req.session.student_id = studentId || null;
         req.session.full_name = trimmedFullName;
         req.session.set_group = set_group;
         req.session.role = 'student';
@@ -1886,6 +1890,7 @@ app.post('/student/profile', isLoggedIn, (req, res) => {
           return res.redirect('/student/profile?error=' + encodeURIComponent('Update failed'));
         }
         req.session.full_name = full_name.trim();
+        req.session.student_id = studentId;
         req.session.course = course.trim();
         req.session.year_level = year_level;
         req.session.set_group = set_group;
