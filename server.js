@@ -990,8 +990,9 @@ app.post('/admin/quizzes/edit', isLoggedIn, isAdmin, (req, res) => {
 
 // ===== PER-STUDENT EXTENSIONS (admin gives individuals extra time after deadline) =====
 const EXT_KINDS = {
-  exam: { table: 'exams', scoreTable: 'scores', scoreCol: 'exam_id', itemLabel: 'Exam', basePath: '/admin/exams' },
-  quiz: { table: 'quizzes', scoreTable: 'quiz_scores', scoreCol: 'quiz_id', itemLabel: 'Quiz', basePath: '/admin/quizzes' }
+  exam: { table: 'exams', scoreTable: 'scores', scoreCol: 'exam_id', itemLabel: 'Exam', basePath: '/admin/exams', studentLink: '/student' },
+  quiz: { table: 'quizzes', scoreTable: 'quiz_scores', scoreCol: 'quiz_id', itemLabel: 'Quiz', basePath: '/admin/quizzes', studentLink: '/student' },
+  assignment: { table: 'assignments', scoreTable: 'submissions', scoreCol: 'assignment_id', itemLabel: 'Assignment', basePath: '/admin/assignments', studentLink: '/student/assignments' }
 };
 
 // Admin: extension manager page — untaken students (checkboxes) + current grants
@@ -1056,7 +1057,7 @@ function grantExtensions(req, res, kind) {
           db.run('INSERT INTO exam_extensions (kind, item_id, student_id, due_date, created_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT(kind, item_id, student_id) DO UPDATE SET due_date=excluded.due_date, created_by=excluded.created_by', [kind, itemId, sid, dueDate, req.session.userId], (e4) => {
             if (e4) { skipped++; return next(i + 1); }
             granted++;
-            notifyUser(sid, kind, cfg.itemLabel + ' Extended', 'Your instructor gave you extra time on "' + item.title + '" until ' + dueDate + ' (11:59 PM).', '/student');
+            notifyUser(sid, kind, cfg.itemLabel + ' Extended', 'Your instructor gave you extra time on "' + item.title + '" until ' + dueDate + ' (11:59 PM).', cfg.studentLink || '/student');
             next(i + 1);
           });
         });
@@ -1083,10 +1084,13 @@ function revokeExtension(req, res, kind) {
 
 app.get('/admin/exams/:id/extensions', isLoggedIn, isAdmin, (req, res) => renderExtensionsPage(req, res, 'exam'));
 app.get('/admin/quizzes/:id/extensions', isLoggedIn, isAdmin, (req, res) => renderExtensionsPage(req, res, 'quiz'));
+app.get('/admin/assignments/:id/extensions', isLoggedIn, isAdmin, (req, res) => renderExtensionsPage(req, res, 'assignment'));
 app.post('/admin/exams/:id/extensions', isLoggedIn, isAdmin, (req, res) => grantExtensions(req, res, 'exam'));
 app.post('/admin/quizzes/:id/extensions', isLoggedIn, isAdmin, (req, res) => grantExtensions(req, res, 'quiz'));
+app.post('/admin/assignments/:id/extensions', isLoggedIn, isAdmin, (req, res) => grantExtensions(req, res, 'assignment'));
 app.post('/admin/exams/extensions/revoke', isLoggedIn, isAdmin, (req, res) => revokeExtension(req, res, 'exam'));
 app.post('/admin/quizzes/extensions/revoke', isLoggedIn, isAdmin, (req, res) => revokeExtension(req, res, 'quiz'));
+app.post('/admin/assignments/extensions/revoke', isLoggedIn, isAdmin, (req, res) => revokeExtension(req, res, 'assignment'));
 
 // Admin: Create quiz page - dynamic subjects + questions filtered by subject (scoped to admin)
 app.get('/admin/quizzes/create', isLoggedIn, isAdmin, (req, res) => {
@@ -2087,8 +2091,17 @@ app.get('/student/assignments', isLoggedIn, (req, res) => {
         const subjects = mySubjects.slice().sort();
         const sel = mySubjects.includes(req.query.subject) ? req.query.subject : '';
         if (sel) filtered = filtered.filter(a => a.subject === sel);
-        filtered.forEach(a => { a.closed = isPastDue(a.due_date); });
-        res.render('student_assignments', { assignments: filtered, subMap, user: req.session, mySubjects, subjects, selected: sel });
+        db.all("SELECT item_id, due_date FROM exam_extensions WHERE kind = 'assignment' AND student_id = ?", [req.session.userId], (errX, exts) => {
+          const extMap = {};
+          (exts || []).forEach(x => { extMap[String(x.item_id)] = x.due_date; });
+          filtered.forEach(a => {
+            const ext = extMap[String(a.id)] || null;
+            const due = ext || a.due_date;
+            a.closed = !!(due && isPastDue(due));
+            a.extended_until = (ext && !a.closed) ? ext : null;
+          });
+          res.render('student_assignments', { assignments: filtered, subMap, user: req.session, mySubjects, subjects, selected: sel });
+        });
       });
     });
   });
@@ -2115,7 +2128,12 @@ app.get('/student/assignments/:id', isLoggedIn, (req, res) => {
         return res.status(403).send('<div style="font-family:Inter,sans-serif;max-width:600px;margin:4rem auto;text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + assignment.subject + '</b>.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
       db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err3, mySub) => {
-        res.render('student_assignment_view', { assignment, mySub: mySub || null, user: req.session, isClosed: isPastDue(assignment.due_date) });
+        getExtension('assignment', aId, req.session.userId, (errX, extDue) => {
+          if (errX) return res.status(500).send('Database error');
+          const due = extDue || assignment.due_date;
+          const closed = !!(due && isPastDue(due));
+          res.render('student_assignment_view', { assignment, mySub: mySub || null, user: req.session, isClosed: closed, extendedUntil: (!closed && extDue) ? extDue : null });
+        });
       });
     });
   });
@@ -2150,9 +2168,14 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
   if (!aId) return res.redirect('/student/assignments');
   db.get('SELECT * FROM assignments WHERE id = ?', [aId], (err, assignment) => {
     if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
-    if (isPastDue(assignment.due_date)) {
-      return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Submission is already closed — the due date has passed'));
-    }
+    getExtension('assignment', aId, req.session.userId, (errX, extDue) => {
+      if (errX) return res.status(500).send('Database error');
+      if (!extDue && isPastDue(assignment.due_date)) {
+        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Submission is already closed — the due date has passed'));
+      }
+      if (extDue && isPastDue(extDue)) {
+        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Your extended deadline (' + extDue + ') has passed'));
+      }
     db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2, existing) => {
       if (existing) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('You already submitted this assignment'));
       const fileName = req.file ? req.file.originalname : null;
@@ -2169,6 +2192,7 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
           if (err3) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Submission failed'));
           res.redirect('/student/assignments/' + aId + '?success=' + encodeURIComponent('Assignment submitted successfully'));
         });
+      });
     });
   });
 });
@@ -2188,9 +2212,14 @@ app.post('/student/assignments/:id/edit', isLoggedIn, uploadAssignment.single('f
       if (!ownerId) return res.status(403).send('Access denied: no instructor assigned');
       if (assignment.created_by && assignment.created_by !== ownerId) return res.status(403).send('Access denied');
       if (mySubjects.length && assignment.subject && !mySubjects.includes(assignment.subject)) return res.status(403).send('Access denied');
-      if (isPastDue(assignment.due_date)) {
-        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Editing is not allowed — the due date has passed'));
-      }
+      getExtension('assignment', aId, req.session.userId, (errX, extDue) => {
+        if (errX) return res.status(500).send('Database error');
+        if (!extDue && isPastDue(assignment.due_date)) {
+          return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Editing is not allowed — the due date has passed'));
+        }
+        if (extDue && isPastDue(extDue)) {
+          return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Your extended deadline (' + extDue + ') has passed'));
+        }
       db.get('SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2, existing) => {
         if (err2 || !existing) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('No submission to edit — please submit first'));
         if (existing.status === 'done' || (existing.score !== null && existing.score !== undefined && String(existing.score).trim() !== '')) {
@@ -2211,6 +2240,7 @@ app.post('/student/assignments/:id/edit', isLoggedIn, uploadAssignment.single('f
             if (err3) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to update submission'));
             res.redirect('/student/assignments/' + aId + '?success=' + encodeURIComponent('Submission updated successfully'));
           });
+        });
       });
     });
   });
@@ -2222,17 +2252,23 @@ app.post('/student/assignments/:id/withdraw', isLoggedIn, (req, res) => {
   if (!aId) return res.redirect('/student/assignments');
   db.get('SELECT due_date FROM assignments WHERE id = ?', [aId], (err, assignment) => {
     if (err || !assignment) return res.redirect('/student/assignments?error=' + encodeURIComponent('Assignment not found'));
-    if (isPastDue(assignment.due_date)) {
-      return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Withdrawal is not allowed — the due date has passed'));
-    }
-    db.get('SELECT status, score FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (errS, sub) => {
-      if (errS || !sub) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('No submission to withdraw'));
-      if (sub.status === 'done' || (sub.score !== null && sub.score !== undefined && String(sub.score).trim() !== '')) {
-        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Locked — your teacher has already checked/graded this. Withdrawal is not allowed.'));
+    getExtension('assignment', aId, req.session.userId, (errX, extDue) => {
+      if (errX) return res.status(500).send('Database error');
+      if (!extDue && isPastDue(assignment.due_date)) {
+        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Withdrawal is not allowed — the due date has passed'));
       }
-      db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2) => {
-        if (err2) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
-        res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+      if (extDue && isPastDue(extDue)) {
+        return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Your extended deadline (' + extDue + ') has passed'));
+      }
+      db.get('SELECT status, score FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (errS, sub) => {
+        if (errS || !sub) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('No submission to withdraw'));
+        if (sub.status === 'done' || (sub.score !== null && sub.score !== undefined && String(sub.score).trim() !== '')) {
+          return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Locked — your teacher has already checked/graded this. Withdrawal is not allowed.'));
+        }
+        db.run('DELETE FROM submissions WHERE assignment_id = ? AND student_id = ?', [aId, req.session.userId], (err2) => {
+          if (err2) return res.redirect('/student/assignments/' + aId + '?error=' + encodeURIComponent('Failed to withdraw'));
+          res.redirect('/student/assignments/' + aId + '?warning=' + encodeURIComponent('Submission withdrawn — you can resubmit'));
+        });
       });
     });
   });
