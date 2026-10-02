@@ -76,23 +76,25 @@
             <input type="date" name="due_date" required value="<%= item.due_date || '' %>">
           </div>
           <div class="form-group">
-            <label>Students who haven't taken it yet (<%= untaken.length %>)</label>
-            <div style="margin-bottom:var(--space-2);">
-              <label style="font-size:var(--text-sm);"><input type="checkbox" id="checkAll"> Select all</label>
+            <label>Students who haven't taken it yet (<span id="untakenCount"><%= untaken.length %></span>)</label>
+            <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap; margin-bottom:var(--space-2);">
+              <input type="text" id="stuSearch" placeholder="🔍 Search name, username, student ID, SET..." style="flex:1; min-width:220px;" autocomplete="off">
+              <label style="font-size:var(--text-sm); white-space:nowrap;"><input type="checkbox" id="checkAll"> Select all</label>
             </div>
+            <p class="form-hint" id="noMatchHint" style="display:none; color:var(--color-warning);">No students match your search.</p>
             <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
               <table class="table">
                 <thead><tr><th></th><th>Student</th><th>Student ID</th><th>SET</th></tr></thead>
-                <tbody>
+              <tbody id="stuTableBody">
                   <% untaken.forEach(s => { %>
-                    <tr>
+                    <tr data-search="<%= ((s.full_name || '') + ' ' + (s.username || '') + ' ' + (s.student_id || '') + ' ' + (s.set_group || '')).toLowerCase() %>">
                       <td><input type="checkbox" name="student_ids" value="<%= s.id %>" class="stu-check"></td>
                       <td class="cell-primary"><%= s.full_name || s.username %> <span class="cell-muted" style="font-size:var(--text-xs);">(<%= s.username %>)</span></td>
                       <td><%= s.student_id || '—' %></td>
                       <td class="text-center"><span class="badge badge-set"><%= s.set_group || '—' %></span></td>
                     </tr>
                   <% }) %>
-                </tbody>
+              </tbody>
               </table>
             </div>
           </div>
@@ -143,8 +145,26 @@
   <script>
     uiShowUrlAlerts();
     uiConfirmForms();
+    const visibleChecks = () => [...document.querySelectorAll('#stuTableBody tr')]
+      .filter(tr => tr.style.display !== 'none')
+      .map(tr => tr.querySelector('.stu-check'));
     document.getElementById('checkAll')?.addEventListener('change', function() {
-      document.querySelectorAll('.stu-check').forEach(c => { c.checked = this.checked; });
+      visibleChecks().forEach(c => { c.checked = this.checked; });
+    });
+    // Live search: filter rows by name, username, student ID or SET
+    document.getElementById('stuSearch')?.addEventListener('input', function() {
+      const q = this.value.trim().toLowerCase();
+      let shown = 0;
+      document.querySelectorAll('#stuTableBody tr').forEach(tr => {
+        const hit = !q || (tr.getAttribute('data-search') || '').includes(q);
+        tr.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      });
+      document.getElementById('untakenCount').textContent = shown + (q ? ' (filtered)' : '');
+      document.getElementById('noMatchHint').style.display = shown ? 'none' : 'block';
+      // keep "select all" in sync: unchecked when searching
+      const ca = document.getElementById('checkAll');
+      if (ca && q) ca.checked = false;
     });
   </script>
 </body>
