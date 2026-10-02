@@ -1431,6 +1431,10 @@ app.post('/student/exam/:examId/submit', isLoggedIn, (req, res) => {
     getExtension('exam', examId, req.session.userId, (errExt, extDue) => {
       if (errExt) return res.status(500).json({ error: 'Database error' });
       if (studentLocked(examRow.active, examRow.due_date, extDue)) return res.status(403).json({ error: 'This exam is closed and can no longer be submitted.' });
+      // Retake guard: already-taken stays locked even after admin re-enables (retake only via admin reset)
+      db.get('SELECT id FROM scores WHERE student_id = ? AND exam_id = ?', [req.session.userId, examId], (errTaken, takenRow) => {
+        if (errTaken) return res.status(500).json({ error: 'Database error' });
+        if (takenRow) return res.status(403).json({ error: 'You already took this exam — retake is not allowed.' });
 
     db.all(`SELECT q.id, q.correct_answer FROM questions q JOIN exam_questions eq ON q.id = eq.question_id WHERE eq.exam_id = ?`, [examId], (err, questions) => {
       if (err) return res.status(500).json({ error: 'Database error' });
@@ -1450,6 +1454,7 @@ app.post('/student/exam/:examId/submit', isLoggedIn, (req, res) => {
           res.json({ redirect: `/student/exam/${examId}/result` });
         }
       );
+      });
       });
     });
   });
