@@ -246,6 +246,20 @@ db.run(`CREATE TABLE IF NOT EXISTS quiz_scores (
   completed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );`);
 
+// ===== PER-STUDENT EXTENSIONS (give individual students extra time after deadline) =====
+// kind = 'exam' | 'quiz'. Extension overrides the due-date expiry for that student
+// ONLY (it never overrides admin disable active=0). One row per student per item.
+db.run(`CREATE TABLE IF NOT EXISTS exam_extensions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  student_id INTEGER NOT NULL,
+  due_date TEXT NOT NULL,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(kind, item_id, student_id)
+);`);
+
 // ---------- Notification helpers ----------
 function notifyUser(userId, type, title, body, link) {
   if (!userId) return;
@@ -464,6 +478,20 @@ function examLocked(exam) {
   if (exam && Number(exam.active) === 0) return true;
   if (exam && exam.due_date && isPastDue(exam.due_date)) return true;
   return false;
+}
+// Per-student lock: a granted extension overrides the due-date expiry for that
+// student only (extensionDue = row from exam_extensions). Admin disable still locks.
+function studentLocked(active, baseDueDate, extensionDue) {
+  if (Number(active) === 0) return true;
+  const due = extensionDue || baseDueDate;
+  if (due && isPastDue(due)) return true;
+  return false;
+}
+// Fetch one student's extension due date for an exam/quiz (null when none)
+function getExtension(kind, itemId, studentId, cb) {
+  db.get('SELECT due_date FROM exam_extensions WHERE kind = ? AND item_id = ? AND student_id = ?', [kind, itemId, studentId], (err, row) => {
+    cb(err, row ? row.due_date : null);
+  });
 }
 function examOpen(exam) { return !examLocked(exam); }
 // Get admin row by signup token (or super admin if token missing/generic)
@@ -960,6 +988,106 @@ app.post('/admin/quizzes/edit', isLoggedIn, isAdmin, (req, res) => {
   });
 });
 
+// ===== PER-STUDENT EXTENSIONS (admin gives individuals extra time after deadline) =====
+const EXT_KINDS = {
+  exam: { table: 'exams', scoreTable: 'scores', scoreCol: 'exam_id', itemLabel: 'Exam', basePath: '/admin/exams' },
+  quiz: { table: 'quizzes', scoreTable: 'quiz_scores', scoreCol: 'quiz_id', itemLabel: 'Quiz', basePath: '/admin/quizzes' }
+};
+
+// Admin: extension manager page — untaken students (checkboxes) + current grants
+function renderExtensionsPage(req, res, kind) {
+  const cfg = EXT_KINDS[kind];
+  if (!cfg) return res.status(404).send('Not found');
+  const itemId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(itemId) || itemId <= 0) return res.redirect(cfg.basePath);
+  const sc = scopeClause(req, 'created_by', 't');
+  db.get('SELECT t.* FROM ' + cfg.table + ' t WHERE t.id = ?' + sc.sql, [itemId].concat(sc.params), (err, item) => {
+    if (err || !item) return res.redirect(cfg.basePath + '?error=' + encodeURIComponent(cfg.itemLabel + ' not found'));
+    // Students of this item's owner who have NOT taken it yet
+    db.all('SELECT u.id, u.full_name, u.username, u.student_id, u.set_group, u.subjects FROM users u WHERE u.role = ? AND u.referrer_id = ? AND u.id NOT IN (SELECT s.student_id FROM ' + cfg.scoreTable + ' s WHERE s.' + cfg.scoreCol + ' = ?) ORDER BY u.full_name ASC',
+      ['student', item.created_by, itemId], (err2, students) => {
+        if (err2) return res.status(500).send('Database error');
+        let untaken = students || [];
+        // Only students who can actually take it (subject-enrolled, or no subjects set)
+        if (item.subject) {
+          untaken = untaken.filter(s => {
+            try {
+              const subs = s.subjects ? JSON.parse(s.subjects) : [];
+              return !subs.length || subs.includes(item.subject);
+            } catch(e) { return true; }
+          });
+        }
+        db.all('SELECT x.*, u.full_name, u.username, u.student_id FROM exam_extensions x JOIN users u ON u.id = x.student_id WHERE x.kind = ? AND x.item_id = ? ORDER BY x.due_date ASC', [kind, itemId], (err3, grants) => {
+          if (err3) return res.status(500).send('Database error');
+          res.render('admin_extensions', { kind, cfg, item, untaken, grants: grants || [], user: req.session });
+        });
+      });
+  });
+}
+
+// Admin: grant extension to selected students (skips already-taken / other teachers' students)
+function grantExtensions(req, res, kind) {
+  const cfg = EXT_KINDS[kind];
+  if (!cfg) return res.status(404).send('Not found');
+  const itemId = parseInt(req.params.id, 10);
+  const dueDate = String(req.body.due_date || '').trim();
+  let ids = req.body.student_ids;
+  if (!ids) ids = [];
+  else if (!Array.isArray(ids)) ids = [ids];
+  ids = ids.map(v => parseInt(v, 10)).filter(n => Number.isInteger(n) && n > 0);
+  const back = cfg.basePath + '/' + itemId + '/extensions';
+  if (!Number.isInteger(itemId) || itemId <= 0) return res.redirect(cfg.basePath);
+  if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return res.redirect(back + '?error=' + encodeURIComponent('Pick a valid due date (YYYY-MM-DD)'));
+  if (!ids.length) return res.redirect(back + '?error=' + encodeURIComponent('Select at least one student'));
+  const sc = scopeClause(req, 'created_by', 't');
+  db.get('SELECT t.id, t.title, t.created_by FROM ' + cfg.table + ' t WHERE t.id = ?' + sc.sql, [itemId].concat(sc.params), (err, item) => {
+    if (err || !item) return res.redirect(cfg.basePath + '?error=' + encodeURIComponent(cfg.itemLabel + ' not found'));
+    let granted = 0, skipped = 0;
+    (function next(i) {
+      if (i >= ids.length) {
+        const msg = granted ? ('Extended "' + item.title + '" for ' + granted + ' student(s) until ' + dueDate + (skipped ? ' (' + skipped + ' skipped: already taken or not yours)' : '')) : 'No one granted (already taken or not your students)';
+        return res.redirect(back + (granted ? '?success=' : '?error=') + encodeURIComponent(msg));
+      }
+      const sid = ids[i];
+      db.get("SELECT id FROM users WHERE id = ? AND role = 'student' AND referrer_id = ?", [sid, item.created_by], (e2, stu) => {
+        if (e2 || !stu) { skipped++; return next(i + 1); }
+        db.get('SELECT student_id FROM ' + cfg.scoreTable + ' WHERE ' + cfg.scoreCol + ' = ? AND student_id = ?', [itemId, sid], (e3, taken) => {
+          if (e3 || taken) { skipped++; return next(i + 1); }
+          db.run('INSERT INTO exam_extensions (kind, item_id, student_id, due_date, created_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT(kind, item_id, student_id) DO UPDATE SET due_date=excluded.due_date, created_by=excluded.created_by', [kind, itemId, sid, dueDate, req.session.userId], (e4) => {
+            if (e4) { skipped++; return next(i + 1); }
+            granted++;
+            notifyUser(sid, kind, cfg.itemLabel + ' Extended', 'Your instructor gave you extra time on "' + item.title + '" until ' + dueDate + ' (11:59 PM).', '/student');
+            next(i + 1);
+          });
+        });
+      });
+    })(0);
+  });
+}
+
+// Admin: revoke one extension grant
+function revokeExtension(req, res, kind) {
+  const cfg = EXT_KINDS[kind];
+  if (!cfg) return res.status(404).send('Not found');
+  const extId = parseInt(req.body.id, 10);
+  if (!Number.isInteger(extId) || extId <= 0) return res.redirect(cfg.basePath);
+  const sc = scopeClause(req, 'created_by', 't');
+  db.get('SELECT x.id, x.item_id FROM exam_extensions x JOIN ' + cfg.table + ' t ON t.id = x.item_id WHERE x.id = ? AND x.kind = ?' + sc.sql, [extId, kind].concat(sc.params), (err, row) => {
+    if (err || !row) return res.redirect(cfg.basePath + '?error=' + encodeURIComponent('Extension not found'));
+    db.run('DELETE FROM exam_extensions WHERE id = ?', [extId], (err2) => {
+      if (err2) return res.redirect(cfg.basePath + '/' + row.item_id + '/extensions?error=' + encodeURIComponent('Revoke failed'));
+      res.redirect(cfg.basePath + '/' + row.item_id + '/extensions?success=' + encodeURIComponent('Extension revoked'));
+    });
+  });
+}
+
+app.get('/admin/exams/:id/extensions', isLoggedIn, isAdmin, (req, res) => renderExtensionsPage(req, res, 'exam'));
+app.get('/admin/quizzes/:id/extensions', isLoggedIn, isAdmin, (req, res) => renderExtensionsPage(req, res, 'quiz'));
+app.post('/admin/exams/:id/extensions', isLoggedIn, isAdmin, (req, res) => grantExtensions(req, res, 'exam'));
+app.post('/admin/quizzes/:id/extensions', isLoggedIn, isAdmin, (req, res) => grantExtensions(req, res, 'quiz'));
+app.post('/admin/exams/extensions/revoke', isLoggedIn, isAdmin, (req, res) => revokeExtension(req, res, 'exam'));
+app.post('/admin/quizzes/extensions/revoke', isLoggedIn, isAdmin, (req, res) => revokeExtension(req, res, 'quiz'));
+
 // Admin: Create quiz page - dynamic subjects + questions filtered by subject (scoped to admin)
 app.get('/admin/quizzes/create', isLoggedIn, isAdmin, (req, res) => {
   getAdminSubjects(req, (err, subjects) => {
@@ -1018,9 +1146,16 @@ app.get('/student/quiz/:quizId', isLoggedIn, (req, res) => {
       if (mySubjects.length && !mySubjects.includes(quiz.subject)) {
         return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + quiz.subject + '</b>.</p><p>Your subjects: ' + mySubjects.join(', ') + '</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
-      if (quizLocked(quiz)) {
-        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Quiz Closed</h3><p>This quiz is closed or disabled by your instructor.</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
-      }
+      getExtension('quiz', quizId, req.session.userId, (errExt, extDue) => {
+        if (errExt) return res.status(500).send('Database error');
+        if (studentLocked(quiz.active, quiz.due_date, extDue)) {
+          const why = Number(quiz.active) === 0
+            ? 'This quiz has been disabled by your instructor.'
+            : (extDue
+              ? 'Your extended deadline (<b>' + extDue + '</b> 11:59 PM) has passed. Ask your instructor for another extension if needed.'
+              : 'This quiz is closed or disabled by your instructor.');
+          return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Quiz Closed</h3><p>' + why + '</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
+        }
       db.get('SELECT * FROM quiz_scores WHERE student_id=? AND quiz_id=?', [req.session.userId, quizId], (err3, taken) => {
         if (err3) return res.status(500).send('Database error');
         if (taken) return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Already Taken</h3><p>You already took <b>' + quiz.title + '</b> &mdash; Score: <b>' + taken.score + '</b></p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
@@ -1037,6 +1172,7 @@ app.get('/student/quiz/:quizId', isLoggedIn, (req, res) => {
           questions: parsed,
           user: req.session
         });
+        });
       });
     });
   });
@@ -1052,7 +1188,9 @@ app.post('/student/quiz/:quizId/submit', isLoggedIn, (req, res) => {
       const ownerId = u?.referrer_id ?? null;
       if (!ownerId) return res.status(403).send('Access denied: no instructor assigned');
       if (quiz.created_by && quiz.created_by !== ownerId) return res.status(403).send('Access denied');
-      if (quizLocked(quiz)) return res.status(403).send('This quiz is closed');
+      getExtension('quiz', quizId, req.session.userId, (errExt, extDue) => {
+        if (errExt) return res.status(500).send('Database error');
+        if (studentLocked(quiz.active, quiz.due_date, extDue)) return res.status(403).send('This quiz is closed');
       db.get('SELECT * FROM quiz_scores WHERE student_id=? AND quiz_id=?', [req.session.userId, quizId], (err3, taken) => {
         if (err3) return res.status(500).send('Database error');
         if (taken) return res.status(403).send('You already took this quiz');
@@ -1070,6 +1208,7 @@ app.post('/student/quiz/:quizId/submit', isLoggedIn, (req, res) => {
           db.run('INSERT INTO quiz_scores (student_id, quiz_id, score) VALUES (?, ?, ?)', [req.session.userId, quizId, score], (err5) => {
             if (err5) return res.status(500).send('Database error');
             res.json({ redirect: '/student/quiz/' + quizId + '/result', score, total: qrows.length });
+          });
           });
         });
       });
@@ -1168,11 +1307,25 @@ app.get('/student', isLoggedIn, (req, res) => {
             if (errSQ) { return res.status(500).send('Database error'); }
             const qScoreMap = {}; const qTakenSet = new Set();
             (quizScores || []).forEach(qs => { qScoreMap[qs.quiz_id] = qs; qTakenSet.add(String(qs.quiz_id)); });
-            (quizzes || []).forEach(z => { z.closed = quizLocked(z); z.question_count = z.qids ? z.qids.split(',').length : 0; });
-            const quizList = quizzes || [];
-            const quizScoreMap = qScoreMap;
-            const quizTakenSet = qTakenSet;
-            res.render('student_dashboard', { exams: filtered, allExams, user: req.session, mySubjects, scoreMap, takenSet, quizzes: quizList, quizScoreMap, quizTakenSet });
+            db.all('SELECT kind, item_id, due_date FROM exam_extensions WHERE student_id = ?', [req.session.userId], (errX, exts) => {
+              const extMap = {};
+              (exts || []).forEach(x => { extMap[x.kind + ':' + x.item_id] = x.due_date; });
+              filtered.forEach(e => {
+                const ext = extMap['exam:' + e.id] || null;
+                e.closed = studentLocked(e.active, e.due_date, ext);
+                e.extended_until = (!takenSet.has(String(e.id)) && ext && !e.closed) ? ext : null;
+              });
+              (quizzes || []).forEach(z => {
+                const ext = extMap['quiz:' + z.id] || null;
+                z.closed = studentLocked(z.active, z.due_date, ext);
+                z.extended_until = (!qTakenSet.has(String(z.id)) && ext && !z.closed) ? ext : null;
+                z.question_count = z.qids ? z.qids.split(',').length : 0;
+              });
+              const quizList = quizzes || [];
+              const quizScoreMap = qScoreMap;
+              const quizTakenSet = qTakenSet;
+              res.render('student_dashboard', { exams: filtered, allExams, user: req.session, mySubjects, scoreMap, takenSet, quizzes: quizList, quizScoreMap, quizTakenSet });
+            });
           });
         });
       });
@@ -1200,12 +1353,15 @@ db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.user
       if (mySubjects.length && !mySubjects.includes(exam.subject)) {
         return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center;"><h3>Access denied</h3><p>You do not have subject <b>' + exam.subject + '</b>.</p><p>Your subjects: ' + mySubjects.join(', ') + '</p><a href="/student" style="color:#6366f1;">Back to dashboard</a></div>');
       }
-      if (examLocked(exam)) {
-        let why = 'This exam is closed by your instructor.';
-        if (Number(exam.active) === 0) why = 'This exam has been disabled by your instructor.';
-        else if (exam.due_date) why = 'This exam closed on <b>' + exam.due_date + '</b> (11:59 PM). Ask your instructor to reopen it if needed.';
-        return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center; background:white; padding:2rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"><h3>Exam Closed</h3><p>' + why + '</p><a href="/student" style="display:inline-block; margin-top:1rem; padding:0.6rem 1rem; background:#6366f1; color:white; border-radius:8px; text-decoration:none;">Back to Dashboard</a></div>');
-      }
+      getExtension('exam', examId, req.session.userId, (errExt, extDue) => {
+        if (errExt) return res.status(500).send('Database error');
+        if (studentLocked(exam.active, exam.due_date, extDue)) {
+          let why = 'This exam is closed by your instructor.';
+          if (Number(exam.active) === 0) why = 'This exam has been disabled by your instructor.';
+          else if (extDue) why = 'Your extended deadline (<b>' + extDue + '</b> 11:59 PM) has passed. Ask your instructor for another extension if needed.';
+          else if (exam.due_date) why = 'This exam closed on <b>' + exam.due_date + '</b> (11:59 PM). Ask your instructor to reopen it if needed.';
+          return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center; background:white; padding:2rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"><h3>Exam Closed</h3><p>' + why + '</p><a href="/student" style="display:inline-block; margin-top:1rem; padding:0.6rem 1rem; background:#6366f1; color:white; border-radius:8px; text-decoration:none;">Back to Dashboard</a></div>');
+        }
       db.get('SELECT score FROM scores WHERE student_id=? AND exam_id=?', [req.session.userId, examId], (err3, taken) => {
         if (taken) {
           return res.status(403).send('<div style="font-family:Inter,sans-serif; max-width:600px; margin:4rem auto; text-align:center; background:white; padding:2rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"><h3>Already Taken</h3><p>You already took <b>' + exam.title + '</b> — Score: <b>' + taken.score + '</b></p><a href="/student" style="display:inline-block; margin-top:1rem; padding:0.6rem 1rem; background:#6366f1; color:white; border-radius:8px; text-decoration:none;">Back to Dashboard</a></div>');
@@ -1223,6 +1379,7 @@ db.get('SELECT subjects, referrer_id FROM users WHERE id = ?', [req.session.user
           questions: parsedQuestions,
           user: req.session 
         });
+        });
       });
     });
   });
@@ -1235,7 +1392,9 @@ app.post('/student/exam/:examId/submit', isLoggedIn, (req, res) => {
 
   db.get('SELECT * FROM exams WHERE id = ?', [examId], (err0, examRow) => {
     if (err0 || !examRow) return res.status(500).json({ error: 'Exam not found' });
-    if (examLocked(examRow)) return res.status(403).json({ error: 'This exam is closed and can no longer be submitted.' });
+    getExtension('exam', examId, req.session.userId, (errExt, extDue) => {
+      if (errExt) return res.status(500).json({ error: 'Database error' });
+      if (studentLocked(examRow.active, examRow.due_date, extDue)) return res.status(403).json({ error: 'This exam is closed and can no longer be submitted.' });
 
     db.all(`SELECT q.id, q.correct_answer FROM questions q JOIN exam_questions eq ON q.id = eq.question_id WHERE eq.exam_id = ?`, [examId], (err, questions) => {
       if (err) return res.status(500).json({ error: 'Database error' });
@@ -1255,6 +1414,7 @@ app.post('/student/exam/:examId/submit', isLoggedIn, (req, res) => {
           res.json({ redirect: `/student/exam/${examId}/result` });
         }
       );
+      });
     });
   });
 });

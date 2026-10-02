@@ -128,6 +128,7 @@
                 <td class="text-right">
                   <div class="actions">
                     <button class="btn btn-edit btn-sm" onclick="openQuizEdit(<%= e.id %>)">Edit</button>
+                    <a href="/admin/quizzes/<%= e.id %>/extensions" class="btn btn-view btn-sm" style="text-decoration:none;">Extend</a>
                     <% if (e.closed) { %>
                     <form action="/admin/quizzes/reopen" method="post" class="d-inline" data-message="Reopen &quot;<%= e.title %>&quot; for 7 more days? Students will be notified." data-confirm-text="Reopen">
                       <input type="hidden" name="id" value="<%= e.id %>">
