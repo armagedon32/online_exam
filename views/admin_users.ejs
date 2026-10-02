@@ -102,7 +102,7 @@
     <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
 
     <form method="get" action="/admin/users" class="search-form">
-      <input type="text" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>" placeholder="Search name, username, course, year, SET, subject, role...">
+      <input type="text" name="search" value="<%= typeof search !== 'undefined' ? search : '' %>" placeholder="Search name, username, student ID, course, year, SET, subject, role...">
       <button type="submit" class="btn btn-primary">Search</button>
       <% if (typeof search !== 'undefined' && search) { %><a href="/admin/users" class="btn btn-ghost">Clear</a><% } %>
     </form>
@@ -119,6 +119,7 @@
               <th>#</th>
               <th>Full Name</th>
               <th>Username</th>
+              <th>Student ID</th>
               <th>Course</th>
               <th>Year</th>
               <th>SET</th>
@@ -131,7 +132,7 @@
           </thead>
           <tbody>
             <% if (users.length === 0) { %>
-              <tr><td colspan="11" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No users yet.</td></tr>
+              <tr><td colspan="12" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No users yet.</td></tr>
             <% } %>
             <% users.forEach(u => { 
                  let subs = [];
@@ -140,7 +141,8 @@
               <tr>
                 <td><%= u.id %></td>
                 <td class="cell-primary"><%= u.full_name || '—' %></td>
-                <td><%= u.username %><% if (u.student_id) { %><br><small class="cell-muted">ID: <%= u.student_id %></small><% } %></td>
+                <td><%= u.username %></td>
+                <td><% if (u.student_id) { %><span class="badge badge-set"><%= u.student_id %></span><% } else { %><span class="badge badge-danger">No ID ⛔</span><% } %></td>
                 <td><%= u.course || '—' %></td>
                 <td class="text-center"><span class="badge badge-warning"><%= u.year_level || '—' %></span></td>
                 <td class="text-center"><span class="badge badge-set"><%= u.set_group || '—' %></span></td>
