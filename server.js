@@ -1644,6 +1644,42 @@ app.post('/change-password', isLoggedIn, (req, res) => {
   });
 });
 
+// --- Student: View own profile (incl. Student ID) ---
+app.get('/student/profile', isLoggedIn, (req, res) => {
+  db.get('SELECT id, username, full_name, student_id, course, year_level, set_group, subjects, role FROM users WHERE id = ?', [req.session.userId], (err, u) => {
+    if (err || !u) return res.status(500).send('Database error');
+    let mySubjects = [];
+    try { mySubjects = u.subjects ? JSON.parse(u.subjects) : []; } catch(e) {}
+    res.render('student_profile', { profile: u, mySubjects, user: req.session });
+  });
+});
+
+// --- Student: Edit own profile (Student ID unique-checked; username/subjects stay admin-managed) ---
+app.post('/student/profile', isLoggedIn, (req, res) => {
+  const { full_name, course, year_level, set_group } = req.body;
+  const studentId = String(req.body.student_id || '').trim().toUpperCase();
+  if (!full_name || !full_name.trim() || !course || !course.trim() || !year_level || !set_group) {
+    return res.redirect('/student/profile?error=' + encodeURIComponent('Full Name, Course, Year Level and SET are required'));
+  }
+  if (!studentId) return res.redirect('/student/profile?error=' + encodeURIComponent('Student ID is required — ask your teacher if you don\'t know it'));
+  db.get('SELECT id FROM users WHERE student_id = ? AND id != ?', [studentId, req.session.userId], (err, dupe) => {
+    if (err) return res.redirect('/student/profile?error=' + encodeURIComponent('Database error'));
+    if (dupe) return res.redirect('/student/profile?error=' + encodeURIComponent('Student ID "' + studentId + '" is already registered to another account'));
+    db.run('UPDATE users SET full_name=?, student_id=?, course=?, year_level=?, set_group=? WHERE id=?',
+      [full_name.trim(), studentId, course.trim(), year_level, set_group, req.session.userId], (err2) => {
+        if (err2) {
+          if (String(err2.message || '').includes('student_id')) return res.redirect('/student/profile?error=' + encodeURIComponent('Student ID "' + studentId + '" is already registered to another account'));
+          return res.redirect('/student/profile?error=' + encodeURIComponent('Update failed'));
+        }
+        req.session.full_name = full_name.trim();
+        req.session.course = course.trim();
+        req.session.year_level = year_level;
+        req.session.set_group = set_group;
+        req.session.save(() => res.redirect('/student/profile?success=' + encodeURIComponent('Profile updated successfully')));
+      });
+  });
+});
+
 // ===== ASSIGNMENTS (Google Classroom-like) =====
 
 // --- Admin: List assignments ---

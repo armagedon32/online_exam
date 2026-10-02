@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile — Student Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+    <div class="nav-left">
+      <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <path d="M12 11h.01"></path>
+          <path d="M14 8h.01"></path>
+        </svg>
+      </div>
+      <span class="brand">Student Portal</span>
+      <a href="/student" class="nav-link">Dashboard</a>
+      <a href="/student/lessons" class="nav-link">Lessons</a>
+      <a href="/student/assignments" class="nav-link">Assignments</a>
+      <a href="/student/messages" class="nav-link">Messages</a>
+      <a href="/student/profile" class="nav-link active" aria-current="page">Profile</a>
+      <a href="/change-password" class="nav-link">Change Password</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar"><%= (user.full_name || user.username || '?').charAt(0).toUpperCase() %></div>
+      <span><%= user.full_name || user.username %> · <%= user.course || '' %> <%= user.year_level ? '· ' + user.year_level : '' %></span>
+      <a href="/logout" class="nav-logout" data-ui-confirm="Log out of your account?" data-confirm-text="Logout" data-danger="true">Logout</a>
+    </div>
+  </nav>
+
+  <div class="dashboard-container" style="max-width: 640px; margin: var(--space-8) auto; padding: 0 var(--space-6);">
+    <header class="page-header">
+      <div>
+        <h1>My Profile 👤</h1>
+        <p>Update your personal details and Student ID.</p>
+      </div>
+    </header>
+
+    <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+
+    <div class="card" style="margin-bottom: var(--space-4);">
+      <div class="card-header"><h3>Edit Profile</h3><span class="meta"><%= profile.username %></span></div>
+      <div class="card-body">
+        <form action="/student/profile" method="post">
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" name="full_name" value="<%= profile.full_name || '' %>" required>
+          </div>
+          <div class="form-group">
+            <label>Student ID</label>
+            <input type="text" name="student_id" value="<%= profile.student_id || '' %>" placeholder="e.g., 2021-00001" required style="text-transform:uppercase;">
+            <p class="form-hint">Your official school ID — must be unique. One account per Student ID. Letters are saved in UPPERCASE.</p>
+          </div>
+          <div class="form-group">
+            <label>Course</label>
+            <input type="text" name="course" value="<%= profile.course || '' %>" required>
+          </div>
+          <div class="form-group">
+            <label>Year Level</label>
+            <select name="year_level" required>
+              <option value="1st Year" <%= profile.year_level==='1st Year'?'selected':'' %>>1st Year</option>
+              <option value="2nd Year" <%= profile.year_level==='2nd Year'?'selected':'' %>>2nd Year</option>
+              <option value="3rd Year" <%= profile.year_level==='3rd Year'?'selected':'' %>>3rd Year</option>
+              <option value="4th Year" <%= profile.year_level==='4th Year'?'selected':'' %>>4th Year</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>SET (A-Z)</label>
+            <select name="set_group" required>
+              <option value="">— Select SET —</option>
+              <% for(let c=65;c<=90;c++){ const l=String.fromCharCode(c); %>
+                <option value="<%= l %>" <%= profile.set_group===l ? 'selected' : '' %>><%= l %></option>
+              <% } %>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Username (managed by admin — cannot change here)</label>
+            <input type="text" value="<%= profile.username %>" disabled>
+          </div>
+          <div class="form-group">
+            <label>Subjects (assigned by your teacher)</label>
+            <div>
+              <% if (mySubjects.length) { mySubjects.forEach(s => { %><span class="badge badge-subj"><%= s %></span> <% }) } else { %><span class="cell-muted">No subjects yet — ask your teacher.</span><% } %>
+            </div>
+          </div>
+          <div class="card-footer">
+            <a href="/student" class="btn btn-secondary" style="text-decoration:none;">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Student Portal System &mdash; Developed by <strong>BART</strong> | Crafted with &hearts; for Education<br>
+    <small>All Rights Reserved &bull; Made in the Philippines &bull; v1.0</small>
+  </footer>
+
+  <script src="/ui.js"></script>
+  <script src="/notifications.js"></script>
+  <script>
+    uiShowUrlAlerts();
+  </script>
+</body>
+</html>
