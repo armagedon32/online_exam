@@ -219,7 +219,7 @@
                       </select>
                     </div>
                     <div class="form-group"><label>Username</label><input type="text" name="username" value="<%= u.username %>" required></div>
-                    <div class="form-group"><label>Student ID</label><input type="text" name="student_id" value="<%= u.student_id || '' %>" placeholder="e.g., 2021-00001" style="text-transform:uppercase;" <%= u.role==='student' ? 'required' : '' %>></div>
+                    <div class="form-group"><label>Student ID</label><input type="text" name="student_id" value="<%= u.student_id || '' %>" placeholder="e.g., 2021-00001" style="text-transform:uppercase;" <%= u.role==='student' ? 'required' : '' %>><p class="form-hint">Dashes/spaces are ignored (24-0164 = 240164). Must be unique.</p></div>
                     <div class="form-group"><label>Role</label>
                       <select name="role"><option value="student" <%= u.role==='student'?'selected':'' %>>student</option><option value="admin" <%= u.role==='admin'?'selected':'' %>>admin</option></select>
                     </div>

@@ -141,6 +141,59 @@ db.serialize(() => {
     db.run("ALTER TABLE questions ADD COLUMN created_by INTEGER", () => {});
     db.run("ALTER TABLE exams ADD COLUMN created_by INTEGER", () => {});
   });
+  // Boot migration: canonicalize existing student_ids (strip dashes/spaces, uppercase)
+  // so old rows like "24-0164" become "240164" and match the strict check.
+  // Row-by-row with collision handling: if the canonical form is already taken by an
+  // older account, the newer row's ID is cleared to NULL (student re-enters via grace)
+  // instead of crashing on the UNIQUE index.
+  db.serialize(() => {
+    db.all("SELECT id, student_id FROM users WHERE student_id IS NOT NULL AND TRIM(student_id) != ''", [], (err, rows) => {
+      if (err) return console.error('boot student_id canonicalize scan:', err.message);
+      const pending = (rows || []).filter(r => normStudentId(r.student_id) !== r.student_id).sort((a, b) => a.id - b.id);
+      if (!pending.length) return;
+      console.log('boot student_id canonicalize: ' + pending.length + ' row(s) to fix');
+      (function next(i) {
+        if (i >= pending.length) return;
+        const r = pending[i];
+        const canon = normStudentId(r.student_id);
+        if (!canon) {
+          db.run('UPDATE users SET student_id = NULL WHERE id = ?', [r.id], (e0) => {
+            if (e0) console.error('boot student_id clear id=' + r.id + ':', e0.message);
+            else console.log('boot student_id cleared junk value for id=' + r.id);
+            next(i + 1);
+          });
+          return;
+        }
+        // Oldest claimant wins the canonical form; newer rows holding it are cleared.
+        // Victims are cleared BEFORE the keeper is updated to avoid transient collisions.
+        db.all('SELECT id FROM users WHERE student_id = ? AND id != ?', [canon, r.id], (e2, holders) => {
+          if (e2) { console.error('boot student_id check id=' + r.id + ':', e2.message); return next(i + 1); }
+          holders = holders || [];
+          const keeper = Math.min.apply(null, [r.id].concat(holders.map(h => h.id)));
+          const victims = [r.id].concat(holders.map(h => h.id)).filter(id => id !== keeper);
+          (function clearNext(vi) {
+            if (vi >= victims.length) {
+              if (keeper === r.id) {
+                db.run('UPDATE users SET student_id = ? WHERE id = ?', [canon, r.id], (e5) => {
+                  if (e5) console.error('boot student_id canonicalize id=' + r.id + ':', e5.message);
+                  else console.log('boot student_id canonicalized id=' + r.id + ' -> "' + canon + '"' + (holders.length ? ' (cleared newer duplicate(s): ' + holders.map(h => h.id).join(',') + ')' : ''));
+                  next(i + 1);
+                });
+              } else {
+                console.log('boot student_id collision: kept oldest id=' + keeper + ', cleared id=' + r.id + ' (re-enter ID via Profile)');
+                next(i + 1);
+              }
+              return;
+            }
+            db.run('UPDATE users SET student_id = NULL WHERE id = ?', [victims[vi]], (e4) => {
+              if (e4) console.error('boot student_id collision clear id=' + victims[vi] + ':', e4.message);
+              clearNext(vi + 1);
+            });
+          })(0);
+        });
+      })(0);
+    });
+  });
   // Assignments tables
   db.exec(`
     CREATE TABLE IF NOT EXISTS assignments (
@@ -491,6 +544,12 @@ function isPastDue(dueDate) {
   const due = new Date(dueDate + 'T23:59:59');
   return !isNaN(due) && due < new Date();
 }
+// Canonical Student ID: UPPERCASE alphanumeric only — dashes, spaces and other
+// separators are ignored, so "24-0164", "240164" and "24 0164" are the SAME ID.
+// This is the strict anti-duplicate key used at signup, profile, admin edit and login.
+function normStudentId(s) {
+  return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 // True when students can no longer take an exam (disabled by admin OR past due date)
 function examLocked(exam) {
   if (exam && Number(exam.active) === 0) return true;
@@ -539,8 +598,8 @@ app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const uname = String(username || '').replace(/ /g, ' ').trim().replace(/\s{2,}/g, ' ');
   if (!uname || !password) return res.redirect('/login?error=' + encodeURIComponent('Username / Student ID and password required'));
-  // Login accepts either Username OR Student ID (students often only remember their ID)
-  const sidGuess = uname.toUpperCase();
+  // Login accepts either Username OR Student ID (canonical: dashes/spaces ignored)
+  const sidGuess = normStudentId(uname);
   db.get('SELECT * FROM users WHERE username = ? OR (student_id IS NOT NULL AND student_id != ? AND student_id = ?)', [uname, '', sidGuess], (err, user) => {
     if (err) return res.redirect('/login?error=' + encodeURIComponent('Database error'));
     if (!user) return res.redirect('/login?error=' + encodeURIComponent('Invalid credentials, please try again'));
@@ -608,8 +667,9 @@ app.post('/signup', (req, res) => {
   else if (!Array.isArray(selectedSubjects)) selectedSubjects = [selectedSubjects];
   if (!username || !password || !full_name || !course || !year_level || !set_group) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('All fields required'));
   if (!selectedSubjects.length) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Select at least one subject'));
-  // Student ID is the anti-duplicate key: trimmed + uppercased so "abc123" and "ABC123" match
-  const studentId = String(req.body.student_id || '').trim().toUpperCase();
+  // Student ID is the anti-duplicate key: canonical form (uppercase alphanumeric only,
+  // dashes/spaces ignored) so "24-0164", "240164" and "ABC123" all match strictly
+  const studentId = normStudentId(req.body.student_id);
   if (!studentId) return res.redirect('/signup' + (ref ? '?ref=' + ref + '&' : '?') + 'error=' + encodeURIComponent('Student ID is required'));
   const subjectsJson = JSON.stringify(selectedSubjects);
   const trimmedFullName = full_name.trim();
@@ -1742,8 +1802,9 @@ app.get('/admin/users', isLoggedIn, isAdmin, (req, res) => {
   // Sub-admin only sees their own students; super sees everyone.
   const ownerScope = superAdmin ? { sql: '', params: [] }
                                : { sql: " AND role='student' AND referrer_id = ? ", params: [req.session.userId] };
-  const searchWhere = search ? ' AND (full_name LIKE ? OR username LIKE ? OR student_id LIKE ? OR course LIKE ? OR year_level LIKE ? OR set_group LIKE ? OR subjects LIKE ? OR role LIKE ?)' : '';
-  const searchParams = search ? [like, like, like, like, like, like, like, like] : [];
+  const normLike = '%' + normStudentId(search) + '%';
+  const searchWhere = search ? ' AND (full_name LIKE ? OR username LIKE ? OR student_id LIKE ? OR student_id LIKE ? OR course LIKE ? OR year_level LIKE ? OR set_group LIKE ? OR subjects LIKE ? OR role LIKE ?)' : '';
+  const searchParams = search ? [like, like, like, normLike, like, like, like, like, like] : [];
   const where = ' WHERE 1=1' + ownerScope.sql + searchWhere;
   const params = ownerScope.params.concat(searchParams);
   db.get('SELECT COUNT(*) as cnt FROM users ' + where, params, (err, cntRow) => {
@@ -1797,8 +1858,8 @@ app.post('/admin/users/update', isLoggedIn, isAdmin, (req, res) => {
   let subs = req.body.subjects;
   if (!subs) subs = [];
   else if (!Array.isArray(subs)) subs = [subs];
-  // Student ID: normalize like signup; empty allowed only for admins (students must keep one)
-  const rawSid = String(req.body.student_id || '').trim().toUpperCase();
+  // Student ID: canonical like signup; empty allowed only for admins (students must keep one)
+  const rawSid = normStudentId(req.body.student_id);
   // Only allow assigning subjects that belong to this admin (prevents escalation)
   getAdminSubjects(req, (errSub, mySubjects) => {
     const allowed = new Set((mySubjects || []).map(s => s.name));
@@ -1911,7 +1972,7 @@ app.get('/student/profile', isLoggedIn, (req, res) => {
 // --- Student: Edit own profile (Student ID unique-checked; username/subjects stay admin-managed) ---
 app.post('/student/profile', isLoggedIn, (req, res) => {
   const { full_name, course, year_level, set_group } = req.body;
-  const studentId = String(req.body.student_id || '').trim().toUpperCase();
+  const studentId = normStudentId(req.body.student_id);
   if (!full_name || !full_name.trim() || !course || !course.trim() || !year_level || !set_group) {
     return res.redirect('/student/profile?error=' + encodeURIComponent('Full Name, Course, Year Level and SET are required'));
   }
