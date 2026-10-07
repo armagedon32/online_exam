@@ -13,6 +13,8 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const uploadAssignment = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// DB restore uploads can be large (live DBs ~30MB+), so they get their own generous limit
+const uploadRestore = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
@@ -2722,7 +2724,17 @@ app.get('/admin/backup/download', isLoggedIn, isAdmin, (req, res) => {
   });
 });
 
-app.post('/admin/backup/restore', isLoggedIn, isAdmin, upload.single('db'), (req, res) => {
+// Friendly upload errors (e.g. file too large) instead of an Express stack page
+function restoreUpload(req, res, next) {
+  uploadRestore.single('db')(req, res, (err) => {
+    if (err) {
+      const msg = (err.code === 'LIMIT_FILE_SIZE') ? 'Upload failed: file too large (max 200MB)' : 'Upload failed: ' + (err.message || 'unknown error');
+      return res.redirect('/admin/backup?error=' + encodeURIComponent(msg));
+    }
+    next();
+  });
+}
+app.post('/admin/backup/restore', isLoggedIn, isAdmin, restoreUpload, (req, res) => {
   if (!req.file) return res.redirect('/admin/backup?error=' + encodeURIComponent('No file uploaded'));
   if (!req.file.originalname.toLowerCase().endsWith('.db') && !req.file.originalname.toLowerCase().endsWith('.sqlite')) {
     return res.redirect('/admin/backup?error=' + encodeURIComponent('Please upload a .db backup file'));
