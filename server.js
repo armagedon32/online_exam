@@ -12,7 +12,7 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-const uploadAssignment = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const uploadAssignment = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 // DB restore uploads can be large (live DBs ~30MB+), so they get their own generous limit
 const uploadRestore = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 // Friendly upload errors (file too large, aborted upload) instead of an Express
@@ -32,7 +32,7 @@ function uploadWithFriendlyError(mw, maxMsg) {
     next();
   });
 }
-const assignmentUpload = (maxMsg) => uploadWithFriendlyError(uploadAssignment.single('file'), maxMsg || 'File too large (max 10MB) — please compress or use a smaller file');
+const assignmentUpload = (maxMsg) => uploadWithFriendlyError(uploadAssignment.single('file'), maxMsg || 'File too large (max 15MB) — please compress or use a smaller file');
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
