@@ -15,6 +15,24 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const uploadAssignment = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 // DB restore uploads can be large (live DBs ~30MB+), so they get their own generous limit
 const uploadRestore = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
+// Friendly upload errors (file too large, aborted upload) instead of an Express
+// stack page / dropped connection: redirect back to the form with a message.
+// Critical on slow tunnel uploads where large files are common.
+function uploadWithFriendlyError(mw, maxMsg) {
+  return (req, res, next) => mw(req, res, (err) => {
+    if (err) {
+      const msg = err.code === 'LIMIT_FILE_SIZE' ? maxMsg : 'Upload failed: ' + (err.message || 'unknown error') + ' — please try again or use a smaller file';
+      let back = '/';
+      try {
+        const ref = req.get('Referer') || '';
+        if (ref) back = new URL(ref).pathname;
+      } catch (e) {}
+      return res.redirect(back + '?error=' + encodeURIComponent(msg));
+    }
+    next();
+  });
+}
+const assignmentUpload = (maxMsg) => uploadWithFriendlyError(uploadAssignment.single('file'), maxMsg || 'File too large (max 10MB) — please compress or use a smaller file');
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
@@ -847,7 +865,7 @@ app.get('/admin/questions', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // Bulk upload CSV
-app.post('/admin/questions/upload', isLoggedIn, isAdmin, upload.single('csv'), (req, res) => {
+app.post('/admin/questions/upload', isLoggedIn, isAdmin, uploadWithFriendlyError(upload.single('csv'), 'File too large (max 5MB)'), (req, res) => {
   if (!req.file) return res.redirect('/admin/questions/add?error=' + encodeURIComponent('No file uploaded'));
   try {
     const content = req.file.buffer.toString('utf8');
@@ -2070,7 +2088,7 @@ app.get('/admin/assignments/create', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // --- Admin: Create assignment POST ---
-app.post('/admin/assignments/create', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+app.post('/admin/assignments/create', isLoggedIn, isAdmin, assignmentUpload(), (req, res) => {
   const { title, description, subject, due_date } = req.body;
   const requireAnswer = req.body.require_answer === '1' ? 1 : 0;
   const requireVideo = req.body.require_video === '1' ? 1 : 0;
@@ -2113,7 +2131,7 @@ app.get('/admin/assignments/:id/edit', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // --- Admin: Edit assignment POST (update details + requirements, optional new file) ---
-app.post('/admin/assignments/:id/edit', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+app.post('/admin/assignments/:id/edit', isLoggedIn, isAdmin, assignmentUpload(), (req, res) => {
   const aId = parseInt(req.params.id, 10);
   if (!aId) return res.redirect('/admin/assignments');
   const { title, description, subject, due_date } = req.body;
@@ -2317,7 +2335,7 @@ app.get('/student/assignments/:id/file', isLoggedIn, (req, res) => {
 });
 
 // --- Student: Submit assignment ---
-app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single('file'), (req, res) => {
+app.post('/student/assignments/:id/submit', isLoggedIn, assignmentUpload(), (req, res) => {
   const aId = parseInt(req.params.id, 10);
   const { text_response, link_url } = req.body;
   if (!aId) return res.redirect('/student/assignments');
@@ -2353,7 +2371,7 @@ app.post('/student/assignments/:id/submit', isLoggedIn, uploadAssignment.single(
 });
 
 // --- Student: Edit own submission (allowed only while NOT graded and NOT past due) ---
-app.post('/student/assignments/:id/edit', isLoggedIn, uploadAssignment.single('file'), (req, res) => {
+app.post('/student/assignments/:id/edit', isLoggedIn, assignmentUpload(), (req, res) => {
   const aId = parseInt(req.params.id, 10);
   const { text_response, link_url, remove_file } = req.body;
   if (!aId) return res.redirect('/student/assignments');
@@ -2492,7 +2510,7 @@ app.get('/admin/lessons/create', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // --- Admin: Create lesson POST (with optional file upload) ---
-app.post('/admin/lessons/create', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+app.post('/admin/lessons/create', isLoggedIn, isAdmin, assignmentUpload(), (req, res) => {
   const { title, description, subject, date, video_link } = req.body;
   if (!title || !title.trim()) return res.redirect('/admin/lessons/create?error=' + encodeURIComponent('Title is required'));
   const subjScope = scopeClause(req, 'created_by');
@@ -2533,7 +2551,7 @@ app.get('/admin/lessons/:id/edit', isLoggedIn, isAdmin, (req, res) => {
 });
 
 // --- Admin: Edit lesson POST (update details, optional new file) ---
-app.post('/admin/lessons/:id/edit', isLoggedIn, isAdmin, uploadAssignment.single('file'), (req, res) => {
+app.post('/admin/lessons/:id/edit', isLoggedIn, isAdmin, assignmentUpload(), (req, res) => {
   const lId = parseInt(req.params.id, 10);
   if (!lId) return res.redirect('/admin/lessons');
   const { title, description, subject, date, video_link } = req.body;
