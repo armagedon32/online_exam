@@ -7,6 +7,9 @@ const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 
 const app = express();
+// Trust the first proxy (Cloudflare Tunnel / ngrok / reverse proxy) so
+// req.protocol + req.get('host') reflect the public URL, not localhost.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const uploadAssignment = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -57,6 +60,12 @@ let db = new sqlite3.Database(DATABASE_PATH, (err) => {
   if (err) console.error('Database error:', err);
   else console.log('Connected to database: ' + DATABASE_PATH);
 });
+// WAL mode: many students submitting at once won't block each other
+// (important when self-hosting on localhost for a whole class).
+db.run('PRAGMA journal_mode=WAL', (err) => {
+  if (err) console.error('WAL mode:', err.message);
+});
+db.run('PRAGMA busy_timeout=10000', () => {});
 
 // Create tables
 db.serialize(() => {
@@ -2708,6 +2717,8 @@ app.post('/admin/backup/restore', isLoggedIn, isAdmin, upload.single('db'), (req
           if (opened) return;
           opened = true;
           db = nd;
+          db.run('PRAGMA journal_mode=WAL', () => {});
+          db.run('PRAGMA busy_timeout=10000', () => {});
           res.redirect('/admin/backup?success=' + encodeURIComponent('Database restored successfully from backup'));
         });
         nd.on('error', (e) => {
