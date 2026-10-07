@@ -159,6 +159,25 @@
     <div id="alertSuccess" class="alert alert-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg><span id="alertSuccessText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
     <div id="alertError" class="alert alert-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span id="alertErrorText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
     <div id="alertWarning" class="alert alert-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span id="alertWarningText"></span><button class="close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+    <div class="card" style="<%= (typeof maintenanceMode !== 'undefined' && maintenanceMode) ? 'border:2px solid var(--danger);' : '' %>">
+      <h3 style="margin:0 0 0.5rem 0; font-size:1.1rem;">🔧 Maintenance Mode
+        <% if (typeof maintenanceMode !== 'undefined' && maintenanceMode) { %>
+          <span class="badge" style="background:#fee2e2; color:var(--danger); padding:0.25rem 0.6rem; border-radius:999px; font-size:0.75rem;">ON — students blocked</span>
+        <% } else { %>
+          <span class="badge" style="background:#f0fdf4; color:var(--success); padding:0.25rem 0.6rem; border-radius:999px; font-size:0.75rem;">OFF — site open</span>
+        <% } %>
+      </h3>
+      <p class="hint" style="margin:0 0 1rem 0;">When ON, everyone except logged-in admins sees an "Under Maintenance" page and cannot log in. Use this when taking the site offline.</p>
+      <form action="/admin/settings/maintenance" method="post" style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+        <% if (typeof maintenanceMode !== 'undefined' && maintenanceMode) { %>
+          <input type="hidden" name="enabled" value="0">
+          <button type="submit" class="btn btn-primary">Turn OFF Maintenance</button>
+        <% } else { %>
+          <input type="hidden" name="enabled" value="1">
+          <button type="submit" class="btn btn-danger" onclick="return confirm('Turn ON maintenance mode? Students will immediately lose access.');">Turn ON Maintenance</button>
+        <% } %>
+      </form>
+    </div>
     <div class="card">
       <h3 style="margin:0 0 1rem 0; font-size:1.1rem;">Add New Subject</h3>
       <form action="/admin/settings/add" method="post">

@@ -40,6 +40,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// ===== MAINTENANCE MODE (admin toggle in Settings) =====
+// When ON, everyone except logged-in admins gets a 503 maintenance page.
+// Persisted in app_settings so it survives restarts (important for localhost).
+// (Table + flag load happen after DB init below; middleware runs per-request.)
+let maintenanceMode = false;
+function maintenanceHtml() {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Under Maintenance</title>
+<style>body{font-family:Inter,system-ui,sans-serif;background:#f1f5f9;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;color:#1e293b}.card{background:#fff;border-radius:16px;padding:3rem 2.5rem;max-width:480px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,.08)}.icon{font-size:3.5rem;margin-bottom:1rem}h1{margin:0 0 .5rem;font-size:1.5rem}p{color:#64748b;margin:0 0 1.5rem}a{color:#4f46e5;font-weight:600;text-decoration:none;font-size:.85rem}</style></head>
+<body><div class="card"><div class="icon">🔧</div><h1>Under Maintenance</h1><p>The portal is temporarily unavailable while your instructor performs updates.<br>Please try again later.</p><a href="/login">Admin Login</a></div></body></html>`;
+}
+// Runs right after sessions: blocks everything except admin sessions + login/logout.
+app.use((req, res, next) => {
+  if (!maintenanceMode) return next();
+  if (req.session && req.session.role === 'admin') return next();
+  if (req.path === '/login' || req.path === '/logout') return next();
+  return res.status(503).send(maintenanceHtml());
+});
+
 // Debug route
 app.get('/debug-session', (req, res) => {
   const session = req.session;
@@ -66,6 +84,14 @@ db.run('PRAGMA journal_mode=WAL', (err) => {
   if (err) console.error('WAL mode:', err.message);
 });
 db.run('PRAGMA busy_timeout=10000', () => {});
+// Maintenance flag storage + load (after DB exists; middleware above reads the variable)
+db.run('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)', (err) => {
+  if (err) return console.error('app_settings:', err.message);
+  db.get("SELECT value FROM app_settings WHERE key = 'maintenance'", [], (err2, row) => {
+    if (!err2 && row) maintenanceMode = String(row.value) === '1';
+    if (maintenanceMode) console.log('Maintenance mode is ON (loaded from DB)');
+  });
+});
 
 // Create tables
 db.serialize(() => {
@@ -636,6 +662,10 @@ app.post('/login', (req, res) => {
     // but they are forced to Profile until they save their ID (see needs_id gate below).
     // This also clears any stale missing-ID lock from before.
     const needsId = missingId;
+    // Maintenance: only admins may log in while it is ON
+    if (maintenanceMode && user.role !== 'admin') {
+      return res.redirect('/login?error=' + encodeURIComponent('Site is under maintenance. Please try again later.'));
+    }
     // success — reset attempts
     db.run('UPDATE users SET failed_attempts=0, is_locked=0 WHERE id=?', [user.id], () => {
       req.session.userId = user.id;
@@ -1769,7 +1799,18 @@ app.get('/admin/settings', isLoggedIn, isAdmin, (req, res) => {
   const s = scopeClause(req, 'created_by');
   db.all('SELECT * FROM subjects WHERE 1=1' + s.sql + ' ORDER BY schedule ASC, name ASC', s.params, (err, subjects) => {
     if (err) return res.status(500).send('Database error');
-    res.render('settings', { subjects: subjects || [], user: req.session });
+    res.render('settings', { subjects: subjects || [], user: req.session, maintenanceMode });
+  });
+});
+
+// Admin: toggle maintenance mode (students locked out, admins unaffected)
+app.post('/admin/settings/maintenance', isLoggedIn, isAdmin, (req, res) => {
+  const on = req.body.enabled === '1' ? '1' : '0';
+  db.run("INSERT INTO app_settings (key, value) VALUES ('maintenance', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [on], (err) => {
+    if (err) return res.redirect('/admin/settings?error=' + encodeURIComponent('Failed to update maintenance mode'));
+    maintenanceMode = (on === '1');
+    console.log('Maintenance mode ' + (maintenanceMode ? 'ENABLED' : 'disabled') + ' by admin id=' + req.session.userId);
+    res.redirect('/admin/settings?success=' + encodeURIComponent(maintenanceMode ? 'Maintenance mode ON — students cannot access the site' : 'Maintenance mode OFF — site is open'));
   });
 });
 
